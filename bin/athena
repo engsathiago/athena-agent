@@ -1,0 +1,41 @@
+#!/bin/sh
+set -eu
+
+ATHENA_BIN_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ATHENA_PROJECT_ROOT=$(CDPATH= cd -- "$ATHENA_BIN_DIR/.." && pwd)
+
+athena_python_supported() {
+    "$1" -c 'import sys; raise SystemExit(0 if (3, 11) <= sys.version_info[:2] < (3, 14) else 1)' >/dev/null 2>&1
+}
+
+athena_run_with() {
+    ATHENA_PY_EXEC=$1
+    shift
+    ATHENA_PY_PATH="$ATHENA_PROJECT_ROOT/core${PYTHONPATH:+:$PYTHONPATH}"
+    exec env PYTHONPATH="$ATHENA_PY_PATH" "$ATHENA_PY_EXEC" -m athena "$@"
+}
+
+if [ -n "${ATHENA_PYTHON:-}" ] && [ -x "$ATHENA_PYTHON" ]; then
+    if athena_python_supported "$ATHENA_PYTHON"; then
+        athena_run_with "$ATHENA_PYTHON" "$@"
+    fi
+    echo "ATHENA_PYTHON is not a supported Python 3.11-3.13 executable: $ATHENA_PYTHON" >&2
+    exit 1
+fi
+
+for ATHENA_PY_CANDIDATE in \
+    "$ATHENA_PROJECT_ROOT/core/venv/bin/python" \
+    "$ATHENA_PROJECT_ROOT/core/.venv/bin/python" \
+    python3.13 python3.12 python3.11 python3
+do
+    if command -v "$ATHENA_PY_CANDIDATE" >/dev/null 2>&1; then
+        ATHENA_PY_RESOLVED=$(command -v "$ATHENA_PY_CANDIDATE")
+        if athena_python_supported "$ATHENA_PY_RESOLVED"; then
+            athena_run_with "$ATHENA_PY_RESOLVED" "$@"
+        fi
+    fi
+done
+
+echo "Athena requires Python 3.11, 3.12, or 3.13." >&2
+echo "Run ./install.sh or set ATHENA_PYTHON to a supported interpreter." >&2
+exit 1

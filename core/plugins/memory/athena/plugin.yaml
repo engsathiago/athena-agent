@@ -1,0 +1,7 @@
+name: athena
+version: 0.1.0
+description: "Athena Memory — local SQLite/FTS5 memory with provenance, confidence, temporal ranking, feedback and correction."
+hooks:
+  - on_delegation
+  - on_memory_write
+

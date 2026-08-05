@@ -1,0 +1,36 @@
+name: Testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  testes-principais:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.6"
+
+      - name: Instalar dependências
+        run: uv sync --project core --locked --extra all --extra messaging --extra dev
+
+      - name: Validar sintaxe
+        run: uv run --project core python -m compileall -q core/athena core/agent core/athena_cli
+
+      - name: Testar recursos Athena
+        run: uv run --project core pytest -q core/tests/athena core/tests/skills/test_openclaw_migration_hardening.py

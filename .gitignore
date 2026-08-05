@@ -1,0 +1,71 @@
+# Sistema operacional e editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Segredos e configuração local
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+credentials.json
+secrets.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Node, desktop e site
+node_modules/
+.next/
+.docusaurus/
+coverage/
+out/
+target/
+
+# Estado e artefatos locais
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+test_durations.json
+core/log.txt
+core/athena-runtime
+core/.web_ui_build.lock
+
+# Documentação/site herdados ainda não distribuídos pela Athena
+core/website/
+core/contributors/
+core/README.es.md
+core/README.ur-pk.md
+core/README.zh-CN.md
+core/CONTRIBUTING.md
+core/CONTRIBUTING.es.md
+core/SECURITY.md
+core/SECURITY.es.md
+core/AGENTS.md
+core/docs/
+core/apps/desktop/public/nous-girl.jpg
+core/apps/bootstrap-installer/public/nous-girl.jpg
+core/apps/desktop/AGENTS.md
+core/apps/desktop/DESIGN.md
+core/apps/desktop/README.md
+core/athena-already-has-routines.md

@@ -1,0 +1,26 @@
+# Athena keeps Athena as its execution engine and enables Athena Memory as the
+# single external memory provider. Values omitted here inherit Athena defaults.
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+  provider: athena
+
+plugins:
+  athena-memory:
+    db_path: "$ATHENA_HOME/memories/athena_memory.db"
+    auto_capture: false
+    capture_delegations: true
+    recall_limit: 6
+    min_score: 0.30
+    temporal_half_life_days: 120
+
+# Athena approval prompts are disabled because authorization belongs to
+# security.yaml and the Athena security bridge.
+approvals:
+  mode: off
+  cron_mode: approve
+
+# Private/local network targets are permitted by default. Athena's own
+# network.request capability is the authority while running as Athena.
+security:
+  allow_private_urls: true
