@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## 0.1.2 — 2026-08-05
+
+- alinha a versão exibida pelo terminal à versão publicada do pacote.
+
 ## 0.1.1 — 2026-08-05
 
 - corrige a instalação do runtime Python em instalações novas: a saída do
