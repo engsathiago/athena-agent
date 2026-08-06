@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## 0.1.3 — 2026-08-05
+
+- torna a política padrão da Athena controlada pelo proprietário, sem
+  confirmações ou recusas genéricas impostas pelo núcleo.
+
 ## 0.1.2 — 2026-08-05
 
 - alinha a versão exibida pelo terminal à versão publicada do pacote.
