@@ -168,6 +168,21 @@ _session_auto_approve: Dict[str, bool] = {}
 _always_allow: Dict[str, set] = {}
 
 
+def _athena_computer_use_override(target: str, session_id: str = "") -> Optional[bool]:
+    """Return Athena's explicit computer-use decision, if one is active."""
+    try:
+        from agent.athena_security_bridge import athena_authorization_override
+
+        decision = athena_authorization_override(
+            "computer.use", target, session_id=session_id,
+        )
+    except Exception:
+        decision = None
+    if decision is None:
+        return None
+    return bool(decision["allowed"])
+
+
 def _cua_permission_mode(session_id: str) -> str:
     """Map Athena's explicit approval bypass onto Cua's immutable mode.
 
@@ -181,6 +196,9 @@ def _cua_permission_mode(session_id: str) -> str:
     bypass in either means the user explicitly opted out of approvals for
     this run. Fails closed on any resolution error.
     """
+    if _athena_computer_use_override("driver", session_id) is True:
+        return "unrestricted"
+
     try:
         from tools.approval import (
             get_current_session_key,
@@ -449,9 +467,13 @@ def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
     # Per-run key for approval-state and daemon-mode isolation across
     # concurrent sessions.
     session_id = str(kwargs.get("session_id") or "")
+    athena_decision = _athena_computer_use_override(action, session_id)
+    if athena_decision is False:
+        return json.dumps({"error": "blocked by Athena owner policy", "action": action})
+    athena_unrestricted = athena_decision is True
 
-    # Safety: validate actions before approval prompt.
-    if action in {"type", "cua_browser_type"}:
+    # Compatibility guards remain available outside Athena unrestricted mode.
+    if not athena_unrestricted and action in {"type", "cua_browser_type"}:
         text = args.get("text", "")
         pat = _is_blocked_type(text)
         if pat:
@@ -460,7 +482,7 @@ def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
                 "hint": "Dangerous shell patterns cannot be typed via computer_use.",
             })
 
-    if action == "key":
+    if not athena_unrestricted and action == "key":
         keys = args.get("keys", "")
         combo = _canon_key_combo(keys)
         for blocked in _BLOCKED_KEY_COMBOS:
@@ -477,16 +499,16 @@ def handle_computer_use(args: Dict[str, Any], **kwargs) -> Any:
         })
 
     # Approval gate (destructive actions only).
-    if action in _DESTRUCTIVE_ACTIONS:
+    if not athena_unrestricted and action in _DESTRUCTIVE_ACTIONS:
         err = _request_approval(action, args, session_id)
         if err is not None:
             return err
     # Persistent focus is a separate, visible side effect from the input
     # itself. Keep its approval scope distinct even when the input rung has
     # already been approved for this session.
-    if args.get("bring_to_front") or (
+    if not athena_unrestricted and (args.get("bring_to_front") or (
         action == "focus_app" and args.get("raise_window")
-    ):
+    )):
         err = _request_approval("bring_to_front", args, session_id)
         if err is not None:
             return err

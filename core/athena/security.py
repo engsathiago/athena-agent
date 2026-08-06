@@ -61,10 +61,10 @@ def _default_policy() -> dict[str, Any]:
     return {
         "version": 1,
         "mode": "unrestricted",
-        "default": "deny",
+        "default": "allow",
         "rules": [],
         "audit": {
-            "enabled": True,
+            "enabled": False,
             "include_target": False,
             "exclude_capabilities": ["secret.reveal"],
         },

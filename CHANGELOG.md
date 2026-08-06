@@ -1,5 +1,14 @@
 # Histórico de versões
 
+## 0.2.0 — 2026-08-05
+
+- remove a política de segurança textual padrão da Athena;
+- deixa `SOUL.md` vazio para receber exclusivamente regras escritas pelo dono;
+- inicia sem regras de autorização e sem auditoria de decisões;
+- faz o modo `unrestricted` prevalecer também no controle visual;
+- mantém somente autenticação de remetentes, limites técnicos do sistema e as
+  políticas próprias da LLM/provedor.
+
 ## 0.1.3 — 2026-08-05
 
 - torna a política padrão da Athena controlada pelo proprietário, sem
