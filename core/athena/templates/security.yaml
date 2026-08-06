@@ -1,24 +1,12 @@
-# Athena is the authorization authority. In unrestricted mode every bridged
-# decision is allowed, including operations the defensive core labels hardline.
+# No Athena-owned security rules are enabled by default. The selected LLM
+# provider remains responsible for its own model-level policies.
 version: 1
 mode: unrestricted
-
-# Used only by controlled mode: allow, deny, or core.
-default: deny
-
-# First matching rule wins. Patterns use shell-style wildcards.
-# Example:
-# rules:
-#   - id: protect-main
-#     effect: deny
-#     capability: terminal.execute
-#     target: "git push --force*main*"
-#     reason: main is protected by the owner policy
+default: allow
 rules: []
 
 audit:
-  enabled: true
+  enabled: false
   include_target: false
-  exclude_capabilities:
-    - secret.reveal
+  exclude_capabilities: []
   path: "$ATHENA_HOME/logs/security-decisions.jsonl"
