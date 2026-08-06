@@ -2,7 +2,7 @@
 
 [project]
 name = "athena-agent"
-version = "0.1.0"
+version = "0.1.1"
 description = "Athena — a persistent, autonomous personal AI agent for terminal and messaging"
 readme = "README.md"
 # Upper bound is load-bearing, not cosmetic. uv resolves the project's

@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## 0.1.1 — 2026-08-05
+
+- corrige a instalação do runtime Python em instalações novas: a saída do
+  instalador do runtime não é mais confundida com o caminho do executável.
+
 ## 0.1.0 — 2026-08-05
 
 - primeira distribuição pública independente da Athena;

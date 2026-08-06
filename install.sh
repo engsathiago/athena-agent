@@ -5,7 +5,7 @@
 
 set -Eeuo pipefail
 
-ATHENA_INSTALL_VERSION="0.1.0"
+ATHENA_INSTALL_VERSION="0.1.1"
 ATHENA_PYTHON_VERSION="3.11"
 ATHENA_ASSUME_YES=0
 ATHENA_RUN_SETUP=0
@@ -129,7 +129,10 @@ athena_install_uv() {
         rm -f "$installer"
         athena_fail "Não foi possível baixar o gerenciador do runtime Python."
     fi
-    sh "$installer"
+    # athena_install_uv is evaluated in a command substitution. Keep the
+    # third-party installer's progress output on stderr so the only stdout
+    # value captured by ATHENA_UV_BIN is the executable path below.
+    sh "$installer" >&2
     rm -f "$installer"
 
     for uv_bin in "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv"; do
