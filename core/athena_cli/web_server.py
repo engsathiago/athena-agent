@@ -259,12 +259,24 @@ async def _lifespan(app: "FastAPI"):
     # sweeping stale sessions on schedule, independent of list requests.
     auto_archive_task = asyncio.create_task(_auto_archive_ticker_loop())
 
+    async def _environment_reaper_loop():
+        from athena_cli.sandbox_manager import sweep_expired
+        while True:
+            await asyncio.sleep(30)
+            try:
+                await asyncio.to_thread(sweep_expired)
+            except Exception as exc:
+                _log.debug("environment expiry sweep failed: %s", exc)
+
+    environment_reaper_task = asyncio.create_task(_environment_reaper_loop())
+
     try:
         yield
     finally:
         pty_reaper_task.cancel()
         selftest_task.cancel()
         auto_archive_task.cancel()
+        environment_reaper_task.cancel()
         await PTY_REGISTRY.close_all()
         if cron_stop is not None:
             cron_stop.set()

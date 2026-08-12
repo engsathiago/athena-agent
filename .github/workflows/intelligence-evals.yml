@@ -18,20 +18,23 @@ jobs:
         run: python -m pip install -e '.[dev]'
       - name: Run intelligence platform tests
         working-directory: core
-        run: scripts/run_tests.sh tests/athena_cli/test_intelligence_platform.py tests/athena_cli/test_advanced_operations.py tests/athena_cli/test_model_lab.py tests/athena_cli/test_task_toolsets.py tests/agent/test_task_completion.py
+        run: ATHENA_PYTHON="$(command -v python)" scripts/run_tests.sh tests/athena_cli/test_first_product_layer.py tests/athena_cli/test_intelligence_platform.py tests/athena_cli/test_advanced_operations.py tests/athena_cli/test_model_lab.py tests/athena_cli/test_task_toolsets.py tests/agent/test_task_completion.py
 
   dashboard-typecheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.16.0
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-          cache: npm
-          cache-dependency-path: core/package-lock.json
-      - name: Install workspace dependencies
-        working-directory: core
-        run: npm ci
+          cache: pnpm
+          cache-dependency-path: core/web/pnpm-lock.yaml
+      - name: Install dashboard dependencies
+        working-directory: core/web
+        run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Typecheck dashboard
-        working-directory: core
-        run: npm run typecheck --workspace web
+        working-directory: core/web
+        run: pnpm typecheck
