@@ -1264,6 +1264,61 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, note }),
     }),
+  getEnvironments: () => fetchJSON<EnvironmentCatalog>("/api/environments"),
+  createEnvironment: (body: EnvironmentCreate) =>
+    fetchJSON<ManagedEnvironment>("/api/environments", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  controlEnvironment: (id: string, action: "start" | "stop" | "restart", body: Record<string, unknown> = {}) =>
+    fetchJSON<ManagedEnvironment>(`/api/environments/${encodeURIComponent(id)}/${action}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  snapshotEnvironment: (id: string, name = "") =>
+    fetchJSON<{ environment: ManagedEnvironment; snapshot: EnvironmentSnapshot }>(
+      `/api/environments/${encodeURIComponent(id)}/snapshot`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) },
+    ),
+  deleteEnvironment: (id: string) =>
+    fetchJSON<{ ok: boolean }>(`/api/environments/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  getMissionControl: (board = "") =>
+    fetchJSON<MissionControlResponse>(`/api/mission-control${board ? `?board=${encodeURIComponent(board)}` : ""}`),
+  createMissionTask: (body: MissionTaskCreate) =>
+    fetchJSON<MissionTask>("/api/mission-control/tasks", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  instructMissionTask: (id: string, body: { board?: string; message: string; author?: string }) =>
+    fetchJSON<{ ok: boolean; task: MissionTask }>(
+      `/api/mission-control/tasks/${encodeURIComponent(id)}/instruction`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    ),
+  actOnMissionTask: (id: string, body: { board?: string; action: string; assignee?: string; reason?: string }) =>
+    fetchJSON<{ ok: boolean; task: MissionTask }>(
+      `/api/mission-control/tasks/${encodeURIComponent(id)}/action`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    ),
+  getIntegrationStore: () => fetchJSON<IntegrationStoreResponse>("/api/integration-store"),
+  getStudio: () => fetchJSON<StudioCatalog>("/api/studio"),
+  createStudioArtifact: (body: { kind: string; title?: string; filename?: string }) =>
+    fetchJSON<StudioArtifact>("/api/studio", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  getStudioArtifact: (id: string) =>
+    fetchJSON<StudioArtifact>(`/api/studio/${encodeURIComponent(id)}`),
+  saveStudioArtifact: (id: string, content: string, title = "") =>
+    fetchJSON<StudioArtifact>(`/api/studio/${encodeURIComponent(id)}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content, title }),
+    }),
+  importStudioArtifact: async (file: File, title = "") => {
+    const form = new FormData(); form.append("file", file); form.append("title", title);
+    return fetchJSON<StudioArtifact>("/api/studio/import", { method: "POST", body: form });
+  },
+  publishStudioArtifact: (id: string, summary = "") =>
+    fetchJSON<{ ok: boolean; artifact: StudioArtifact; result: ReviewItem }>(
+      `/api/studio/${encodeURIComponent(id)}/publish`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ summary }) },
+    ),
+  deleteStudioArtifact: (id: string) =>
+    fetchJSON<{ ok: boolean }>(`/api/studio/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   // ── Admin: Curator ──────────────────────────────────────────────────
   getCurator: () => fetchJSON<CuratorStatus>("/api/curator"),
@@ -1912,6 +1967,58 @@ export interface IntelligenceStatus {
   experiments: { total: number; counts: Record<string, number> };
   packages: { available: Array<{ name: string; version: string; description?: string }>; installed: Array<{ name: string; version: string }> };
   workers: { online: number; nodes: Array<{ id: string; name: string; status: string; labels: string[] }>; jobs: Record<string, number> };
+}
+
+export interface EnvironmentSnapshot { image: string; created_at: number }
+export interface ManagedEnvironment {
+  id: string; name: string; backend: string; image: string; status: string;
+  created_at: number; updated_at: number; expires_at: number; ttl_minutes: number;
+  cpu: number; memory_mb: number; persistent: boolean; network: boolean;
+  workspace: string; expired?: boolean; snapshots: EnvironmentSnapshot[];
+}
+export interface EnvironmentCatalog {
+  environments: ManagedEnvironment[]; counts: Record<string, number>;
+  drivers: Array<{ id: string; name: string; available: boolean; managed: boolean; description: string; error?: string }>;
+  default_image: string;
+}
+export interface EnvironmentCreate {
+  name: string; image?: string; ttl_minutes?: number; cpu?: number;
+  memory_mb?: number; persistent?: boolean; network?: boolean;
+}
+export interface MissionTaskComment { id: number; author: string; body: string; created_at: number }
+export interface MissionTask {
+  id: string; title: string; body?: string | null; assignee?: string | null; status: string;
+  priority: number; created_at: number; started_at?: number | null; completed_at?: number | null;
+  parents: string[]; children: string[]; comments: MissionTaskComment[];
+  latest_run?: { id: number; status: string; outcome?: string | null; summary?: string | null; error?: string | null } | null;
+}
+export interface MissionTaskCreate {
+  board?: string; title: string; body?: string; assignee?: string; priority?: number;
+  parents?: string[]; goal_mode?: boolean;
+}
+export interface MissionControlResponse {
+  board: string; boards: Array<{ slug: string; name?: string }>;
+  stats: { by_status: Record<string, number>; by_assignee: Record<string, Record<string, number>> };
+  tasks: MissionTask[]; agents: Array<{ id: string; name: string; tasks: number; running: number; blocked: number }>;
+  assignees: Array<Record<string, unknown>>; edges: Array<{ from: string; to: string; type: string }>;
+  workers: IntelligenceStatus["workers"];
+}
+export interface IntegrationStoreItem {
+  id: string; kind: "mcp" | "plugin" | "channel"; name: string; description: string;
+  source: string; auth_type: string; installed: boolean; enabled: boolean; state?: string;
+  version?: string; required_env: Array<{ name: string; prompt: string; required: boolean }>;
+}
+export interface IntegrationStoreResponse {
+  items: IntegrationStoreItem[]; counts: { total: number; installed: number; enabled: number };
+}
+export interface StudioArtifact {
+  id: string; title: string; filename: string; kind: string; media_type: string;
+  preview_kind: string; editable: boolean; size_bytes: number; version: number;
+  created_at: number; updated_at: number; content?: string; content_error?: string;
+  published_result_id: string; versions?: string[];
+}
+export interface StudioCatalog {
+  artifacts: StudioArtifact[]; templates: Array<{ id: string; filename: string; label: string }>;
 }
 
 export interface CuratorStatus {

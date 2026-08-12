@@ -1,5 +1,32 @@
 # Histórico de versões
 
+## 0.4.0 — 2026-08-12
+
+- adiciona a Central de Missão visual para criar, acompanhar, orientar, pausar,
+  retomar e reatribuir trabalhos entre agentes;
+- adiciona ambientes Docker administrados pela Athena, com isolamento, limites
+  de CPU e memória, expiração automática, persistência opcional e snapshots;
+- reúne ferramentas MCP, plugins e canais de comunicação em uma Loja de
+  Integrações única;
+- adiciona o Athena Studio para criar, importar, editar, visualizar, versionar,
+  baixar e publicar documentos, apresentações, planilhas, sites e outros
+  arquivos;
+- publica as novas áreas no painel web e documenta sua instalação, operação,
+  armazenamento e configuração;
+- preserva integralmente o espaço de políticas controlado pelo proprietário.
+
+## 0.3.0 — 2026-08-11
+
+- adiciona memória persistente com procedência, busca e auditoria;
+- adiciona avaliações, roteamento adaptativo de modelos, experimentos e
+  evolução assistida;
+- adiciona fluxos duráveis, Central de Resultados, traces operacionais e
+  pacotes profissionais;
+- adiciona trabalhadores distribuídos para dividir trabalhos entre VPSs;
+- melhora recuperação, backup, operação offline e suporte a Ollama local;
+- incorpora novas skills de pesquisa, desenvolvimento, criação e avaliação;
+- amplia o painel web e a documentação operacional em português.
+
 ## 0.2.0 — 2026-08-05
 
 - remove a política de segurança textual padrão da Athena;

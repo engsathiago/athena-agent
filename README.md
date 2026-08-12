@@ -5,7 +5,7 @@ A Athena conversa, executa ferramentas no computador, mantém sessões e memóri
 persistentes, cria agentes isolados e pode permanecer ativa em uma VPS por meio
 de um serviço do sistema.
 
-> **Versão atual:** `0.3.0` — plataforma operacional completa para testes em
+> **Versão atual:** `0.4.0` — primeira camada de produto completa para testes em
 > VPS. Mantenha cópias de segurança dos dados importantes.
 
 ## Principais recursos
@@ -23,6 +23,13 @@ de um serviço do sistema.
   resultados com artefatos versionados;
 - roteamento adaptativo de modelos, experimentos canário, pacotes profissionais
   e trabalhadores distribuídos entre VPSs;
+- computadores isolados criados sob demanda, com limites, expiração,
+  persistência opcional e snapshots;
+- Central de Missão para acompanhar, orientar, pausar, retomar e reatribuir
+  trabalhos entre agentes;
+- Loja de Integrações reunindo MCPs, plugins e canais em um único catálogo;
+- Athena Studio para criar, importar, editar, visualizar, versionar, baixar e
+  publicar documentos, sites, apresentações, planilhas e outras entregas;
 - espaço próprio para o proprietário escrever sua política, sem regras padrão
   impostas pela Athena.
 
@@ -105,6 +112,7 @@ athena results status          # entregas aguardando revisão
 athena flows status            # fluxos duráveis e retomáveis
 athena packages list           # pacotes profissionais disponíveis
 athena workers status          # rede de trabalhadores e filas
+athena dashboard               # painel com Missões, Ambientes, Integrações e Studio
 ```
 
 ## Dados persistentes
@@ -123,6 +131,8 @@ Todo o estado do usuário fica separado do código:
 ├── operations/
 ├── packages/
 ├── results/
+├── platform/sandboxes/
+├── studio/
 ├── profiles/
 ├── sessions/
 ├── skills/
@@ -136,6 +146,7 @@ Nunca publique `~/.athena/.env`: ele pode conter tokens e chaves de API.
 
 - [Operação avançada: avaliações, memória, Ollama offline, recuperação e evolução](docs/OPERACAO_AVANCADA_ATHENA.md)
 - [Plataforma de inteligência: traces, fluxos, revisão, roteamento e múltiplas VPSs](docs/PLATAFORMA_INTELIGENCIA_ATHENA.md)
+- [Primeira camada de produto: Missões, Ambientes, Integrações e Studio](docs/PRIMEIRA_CAMADA_PRODUTO.md)
 - [Instalação em VPS](docs/INSTALACAO_VPS.md)
 - [Configuração de modelos](docs/MODELOS.md)
 - [Telegram](docs/TELEGRAM.md)
