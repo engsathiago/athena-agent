@@ -1,0 +1,1 @@
+{"id":"research-structure","prompt":"Explique em português como validar uma informação usando duas fontes independentes, em até 120 palavras.","checks":[{"type":"regex","value":"(?is).{40,}"},{"type":"max_words","value":120}],"tags":["research","quality"]}

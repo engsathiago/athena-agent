@@ -49,6 +49,25 @@ def _init_git_repo(repo: Path) -> None:
 
 
 
+def test_task_toolsets_persist_and_auto_cannot_mix_with_explicit(kanban_home):
+    del kanban_home
+    with kb.connect_closing() as conn:
+        task_id = kb.create_task(
+            conn,
+            title="Research the API",
+            assignee="researcher",
+            toolsets=["auto"],
+        )
+        assert kb.get_task(conn, task_id).toolsets == ["auto"]
+        with pytest.raises(ValueError, match="cannot be combined"):
+            kb.create_task(
+                conn,
+                title="Invalid mixed routing",
+                assignee="researcher",
+                toolsets=["auto", "web"],
+            )
+
+
 def test_cross_process_init_lock_uses_windows_byte_range_lock(tmp_path, monkeypatch):
     """Windows must use a real (non-blocking) process lock, not a no-op open.
 

@@ -1,0 +1,37 @@
+name: Athena Intelligence Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  intelligence-unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install development dependencies
+        working-directory: core
+        run: python -m pip install -e '.[dev]'
+      - name: Run intelligence platform tests
+        working-directory: core
+        run: scripts/run_tests.sh tests/athena_cli/test_intelligence_platform.py tests/athena_cli/test_advanced_operations.py tests/athena_cli/test_model_lab.py tests/athena_cli/test_task_toolsets.py tests/agent/test_task_completion.py
+
+  dashboard-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: core/package-lock.json
+      - name: Install workspace dependencies
+        working-directory: core
+        run: npm ci
+      - name: Typecheck dashboard
+        working-directory: core
+        run: npm run typecheck --workspace web

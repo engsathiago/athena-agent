@@ -31,6 +31,8 @@ _MEMORY_SCHEMA = {
                 "type": "string",
                 "enum": [
                     "remember",
+                    "search",
+                    "get",
                     "recall",
                     "list",
                     "update",
@@ -38,6 +40,10 @@ _MEMORY_SCHEMA = {
                     "feedback",
                     "status",
                     "history",
+                    "timeline",
+                    "reflect",
+                    "review",
+                    "maintain",
                 ],
             },
             "content": {"type": "string"},
@@ -65,6 +71,36 @@ _MEMORY_SCHEMA = {
             "supersedes_id": {"type": "integer"},
             "helpful": {"type": "boolean"},
             "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+            "snippet_chars": {"type": "integer", "minimum": 80, "maximum": 2000},
+            "before": {"type": "integer", "minimum": 0, "maximum": 25},
+            "after": {"type": "integer", "minimum": 0, "maximum": 25},
+            "same_scope": {"type": "boolean"},
+            "same_session": {"type": "boolean"},
+            "dry_run": {"type": "boolean"},
+            "stale_after_days": {"type": "number", "minimum": 1},
+            "low_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "delivered": {
+                "type": "string",
+                "description": "What was actually delivered or changed.",
+            },
+            "quality": {
+                "type": "string",
+                "description": "Outcome quality, preferably verified, partial, failed, or unknown.",
+            },
+            "next_action": {
+                "type": "string",
+                "description": "Useful next step, or empty when no follow-up is needed.",
+            },
+            "learned": {
+                "type": "string",
+                "description": "Reusable lesson that should improve future work.",
+            },
+            "task_id": {"type": "string"},
+            "evidence": {
+                "type": "array",
+                "description": "Short evidence summaries supporting the quality judgment.",
+                "items": {"type": "string"},
+            },
         },
         "required": ["action"],
     },
@@ -98,6 +134,39 @@ def _public_memory(memory: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(previous, dict):
         public["previous"] = _public_memory(previous)
     return public
+
+
+def _compact_text(content: Any, limit: int) -> str:
+    """Return a bounded, single-line preview without losing both endpoints."""
+    text = " ".join(str(content or "").split())
+    limit = max(40, int(limit))
+    if len(text) <= limit:
+        return text
+    marker = " ... "
+    head = max(20, int((limit - len(marker)) * 0.72))
+    tail = max(12, limit - len(marker) - head)
+    return text[:head].rstrip() + marker + text[-tail:].lstrip()
+
+
+def _memory_index(memory: Dict[str, Any], *, snippet_chars: int) -> Dict[str, Any]:
+    """Progressive-disclosure view used to choose which memories to expand."""
+    public = _public_memory(memory)
+    return {
+        key: public[key]
+        for key in (
+            "id",
+            "kind",
+            "scope",
+            "importance",
+            "confidence",
+            "trust_origin",
+            "source",
+            "updated_at",
+            "score",
+            "retrieval",
+        )
+        if key in public
+    } | {"snippet": _compact_text(public.get("content"), snippet_chars)}
 
 
 class AthenaMemoryProvider(MemoryProvider):
@@ -141,10 +210,17 @@ class AthenaMemoryProvider(MemoryProvider):
             "Durable local memory is active. Use athena_memory to remember only "
             "stable information that will help in future conversations. Recall "
             "when the answer depends on prior preferences, people, commitments, "
-            "decisions, projects, or lessons. Treat confidence and provenance as "
+            "decisions, projects, or lessons. For exploratory recall, use search "
+            "to get compact candidates and get to expand only the relevant IDs. "
+            "Use timeline around a selected ID when chronological context matters. "
+            "Use review before maintenance; maintain is a dry run unless explicitly "
+            "applied and never automatically archives owner/system records. "
+            "Treat confidence and provenance as "
             "evidence strength. If recalled information conflicts with the user "
             "or newer evidence, acknowledge the conflict and update or supersede "
-            "the old memory. Never store credentials or secrets."
+            "the old memory. After significant work, use reflect to preserve a "
+            "short Delivered/Quality/Next/Learned record, but only when it contains "
+            "a reusable lesson. Never store credentials or secrets."
         )
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
@@ -173,15 +249,27 @@ class AthenaMemoryProvider(MemoryProvider):
         ][:limit]
         if not matches:
             return ""
+        item_max_chars = max(
+            80, min(int(self._config.get("prefetch_item_max_chars", 700)), 4000)
+        )
+        total_max_chars = max(
+            500, min(int(self._config.get("prefetch_max_chars", 4000)), 20000)
+        )
         lines = ["## Athena recalled memory"]
         for memory in matches:
-            lines.append(
+            line = (
                 "- "
                 f"[id={memory['id']} kind={memory['kind']} scope={memory['scope']} "
                 f"confidence={float(memory['confidence']):.2f} "
                 f"origin={memory['trust_origin']} source={memory['source']}] "
-                f"{memory['content']}"
+                f"{_compact_text(memory['content'], item_max_chars)}"
             )
+            candidate = "\n".join([*lines, line])
+            if len(candidate) > total_max_chars:
+                break
+            lines.append(line)
+        if len(lines) == 1:
+            return ""
         return "\n".join(lines)
 
     def sync_turn(
@@ -253,7 +341,12 @@ class AthenaMemoryProvider(MemoryProvider):
         if not task_text or not result_text:
             return
         self._store.remember(
-            f"Delegated task: {task_text}\nResult: {result_text}",
+            (
+                f"Delivered: {result_text}\n"
+                "Quality: not independently evaluated\n"
+                "Next: review or continue only if the parent task requires it\n"
+                f"Learned: delegated task context was: {task_text}"
+            ),
             kind="lesson",
             scope="global",
             importance=0.45,
@@ -307,6 +400,52 @@ class AthenaMemoryProvider(MemoryProvider):
                 )
                 return _json_result({"memory": _public_memory(result)})
 
+            if action == "reflect":
+                delivered = " ".join(str(args.get("delivered") or "").split())
+                learned = " ".join(str(args.get("learned") or "").split())
+                if not delivered and not learned:
+                    raise ValueError("reflect requires delivered or learned")
+                quality = " ".join(str(args.get("quality") or "unknown").split())
+                next_action = " ".join(str(args.get("next_action") or "none").split())
+                evidence = args.get("evidence") or []
+                if isinstance(evidence, str):
+                    evidence = [evidence]
+                if not isinstance(evidence, (list, tuple)):
+                    raise ValueError("evidence must be a list of short summaries")
+                evidence = [
+                    " ".join(str(item).split())[:500]
+                    for item in evidence[:20]
+                    if str(item).strip()
+                ]
+                task_id = " ".join(str(args.get("task_id") or "").split())[:200]
+                evidence_text = "; ".join(evidence)[:2000] or "not recorded"
+                content = (
+                    f"Delivered: {delivered or 'not recorded'}\n"
+                    f"Quality: {quality}\n"
+                    f"Evidence: {evidence_text}\n"
+                    f"Next: {next_action}\n"
+                    f"Learned: {learned or 'no reusable lesson recorded'}"
+                )
+                result = self._store.remember(
+                    content,
+                    kind="lesson",
+                    scope=str(args.get("scope") or "global"),
+                    importance=float(args.get("importance", 0.65)),
+                    confidence=float(args.get("confidence", 0.80)),
+                    trust_origin="agent",
+                    source="task_reflection",
+                    session_id=self._session_id,
+                    metadata_json=json.dumps(
+                        {
+                            "task_id": task_id or None,
+                            "quality": quality,
+                            "evidence": evidence,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
+                return _json_result({"memory": _public_memory(result)})
+
             if action == "recall":
                 query = str(args.get("query") or "")
                 memories = self._store.recall(
@@ -319,6 +458,30 @@ class AthenaMemoryProvider(MemoryProvider):
                 return _json_result(
                     {"memories": [_public_memory(memory) for memory in memories]}
                 )
+
+            if action == "search":
+                query = str(args.get("query") or "")
+                snippet_chars = max(80, min(int(args.get("snippet_chars", 320)), 2000))
+                memories = self._store.recall(
+                    query,
+                    scope=args.get("scope"),
+                    kind=args.get("kind"),
+                    limit=int(args.get("limit", self._config.get("recall_limit", 6))),
+                    min_score=float(self._config.get("min_score", 0.30)),
+                )
+                return _json_result(
+                    {
+                        "memories": [
+                            _memory_index(memory, snippet_chars=snippet_chars)
+                            for memory in memories
+                        ],
+                        "next": "Call get with memory_id for full content when needed.",
+                    }
+                )
+
+            if action == "get":
+                memory_id = self._required_id(args)
+                return _json_result({"memory": _public_memory(self._store.get(memory_id))})
 
             if action == "list":
                 memories = self._store.list_memories(
@@ -363,6 +526,49 @@ class AthenaMemoryProvider(MemoryProvider):
                     limit=int(args.get("limit", 50)),
                 )
                 return _json_result({"events": events})
+
+            if action == "timeline":
+                memory_id = self._required_id(args)
+                result = self._store.timeline(
+                    memory_id,
+                    before=int(args.get("before", 3)),
+                    after=int(args.get("after", 3)),
+                    same_scope=bool(args.get("same_scope", True)),
+                    same_session=bool(args.get("same_session", False)),
+                )
+                snippet_chars = max(80, min(int(args.get("snippet_chars", 320)), 2000))
+                return _json_result(
+                    {
+                        **{key: value for key, value in result.items() if key != "memories"},
+                        "memories": [
+                            {
+                                **_memory_index(memory, snippet_chars=snippet_chars),
+                                "anchor": int(memory["id"]) == memory_id,
+                            }
+                            for memory in result["memories"]
+                        ],
+                        "next": "Call get with memory_id for full content when needed.",
+                    }
+                )
+
+            if action in {"review", "maintain"}:
+                result = self._store.maintain(
+                    dry_run=True if action == "review" else bool(args.get("dry_run", True)),
+                    limit=int(args.get("limit", 200)),
+                    stale_after_days=float(
+                        args.get(
+                            "stale_after_days",
+                            self._config.get("maintenance_stale_after_days", 180),
+                        )
+                    ),
+                    low_confidence=float(
+                        args.get(
+                            "low_confidence",
+                            self._config.get("maintenance_low_confidence", 0.35),
+                        )
+                    ),
+                )
+                return _json_result(result)
 
             raise ValueError(f"unsupported action: {action}")
         except (KeyError, TypeError, ValueError) as exc:
@@ -411,6 +617,22 @@ class AthenaMemoryProvider(MemoryProvider):
                 "default": 6,
             },
             {
+                "key": "prefetch_item_max_chars",
+                "description": "Maximum characters injected for each automatically recalled memory",
+                "type": "integer",
+                "minimum": 80,
+                "maximum": 4000,
+                "default": 700,
+            },
+            {
+                "key": "prefetch_max_chars",
+                "description": "Maximum total characters injected by automatic memory recall",
+                "type": "integer",
+                "minimum": 500,
+                "maximum": 20000,
+                "default": 4000,
+            },
+            {
                 "key": "min_score",
                 "description": "Minimum combined recall score",
                 "type": "number",
@@ -424,6 +646,21 @@ class AthenaMemoryProvider(MemoryProvider):
                 "type": "number",
                 "minimum": 0,
                 "default": 120,
+            },
+            {
+                "key": "maintenance_stale_after_days",
+                "description": "Days before an unused weak memory is considered stale",
+                "type": "number",
+                "minimum": 1,
+                "default": 180,
+            },
+            {
+                "key": "maintenance_low_confidence",
+                "description": "Confidence ceiling used by safe memory maintenance",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "default": 0.35,
             },
         ]
 

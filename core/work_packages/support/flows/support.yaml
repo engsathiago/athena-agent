@@ -1,0 +1,17 @@
+name: atendimento-completo
+steps:
+  - id: triagem
+    type: athena
+    prompt: "Classifique urgência, impacto e informação faltante deste atendimento: {{input.mensagem}}"
+  - id: investigar
+    type: athena
+    needs: [triagem]
+    prompt: "Investigue a causa provável e reúna evidências: {{steps.triagem.output.response}}"
+  - id: responder
+    type: athena
+    needs: [investigar]
+    prompt: "Escreva uma resposta clara com solução, limitações e próximo passo: {{steps.investigar.output.response}}"
+  - id: acompanhar
+    type: wait
+    needs: [responder]
+    message: Aguarde a confirmação da pessoa atendida.

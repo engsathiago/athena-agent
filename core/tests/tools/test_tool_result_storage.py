@@ -40,6 +40,20 @@ class TestGeneratePreview:
         assert preview == text
         assert has_more is False
 
+    def test_large_preview_preserves_beginning_and_end(self):
+        text = "HEADER\n" + ("middle line\n" * 2_000) + "FINAL ERROR: timeout"
+        preview, has_more = generate_preview(text, max_chars=1_000)
+        assert has_more is True
+        assert preview.startswith("HEADER")
+        assert "characters omitted" in preview
+        assert preview.endswith("FINAL ERROR: timeout")
+        assert len(preview) <= 1_000
+
+    def test_tiny_preview_stays_within_requested_bound(self):
+        preview, has_more = generate_preview("abcdefghijklmnopqrstuvwxyz", max_chars=10)
+        assert has_more is True
+        assert preview == "abcdefghij"
+
 
 # ── _heredoc_marker ───────────────────────────────────────────────────
 
@@ -152,6 +166,7 @@ class TestBuildPersistedMessage:
         assert "50,000 characters" in msg
         assert "/tmp/athena-results/test123.txt" in msg
         assert "read_file" in msg
+        assert "beginning and end" in msg
         assert "first 100 chars..." in msg
         assert "..." in msg  # has_more indicator
 

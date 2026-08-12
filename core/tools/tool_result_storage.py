@@ -80,14 +80,45 @@ def _safe_result_filename(tool_use_id: str) -> str:
 
 
 def generate_preview(content: str, max_chars: int = DEFAULT_PREVIEW_SIZE_CHARS) -> tuple[str, bool]:
-    """Truncate at last newline within max_chars. Returns (preview, has_more)."""
+    """Return a bounded head-and-tail preview.
+
+    Tool output often puts its schema/header at the beginning and the actual
+    error, totals, or conclusion at the end.  Preserving both is more useful
+    than a prefix-only truncation, while the complete result remains available
+    in the persisted file.
+    """
     if len(content) <= max_chars:
         return content, False
-    truncated = content[:max_chars]
-    last_nl = truncated.rfind("\n")
-    if last_nl > max_chars // 2:
-        truncated = truncated[:last_nl + 1]
-    return truncated, True
+    max_chars = max(1, int(max_chars))
+    if max_chars < 32:
+        return content[:max_chars], True
+    marker_template = "\n... [{omitted:,} characters omitted; full output is persisted] ...\n"
+    # Reserve enough room for the marker and split the remainder 65/35.  That
+    # ratio retains useful headers without sacrificing terminal diagnostics.
+    marker = marker_template.format(omitted=max(0, len(content) - max_chars))
+    payload_budget = max_chars - len(marker)
+    if payload_budget < 16:
+        marker_template = "\n...\n"
+        marker = marker_template
+        payload_budget = max_chars - len(marker)
+    head_budget = max(1, int(payload_budget * 0.65))
+    tail_budget = max(1, payload_budget - head_budget)
+    head = content[:head_budget]
+    tail = content[-tail_budget:]
+    head_nl = head.rfind("\n")
+    if head_nl > head_budget // 2:
+        head = head[:head_nl + 1]
+    tail_nl = tail.find("\n")
+    if 0 <= tail_nl < tail_budget // 2:
+        tail = tail[tail_nl + 1:]
+    omitted = max(0, len(content) - len(head) - len(tail))
+    marker = marker_template.format(omitted=omitted)
+    preview = head + marker + tail
+    # Marker digit growth can push a very small configured budget over the
+    # limit. Trim the head only; never discard the diagnostic tail.
+    if len(preview) > max_chars:
+        preview = head[: max(0, len(head) - (len(preview) - max_chars))] + marker + tail
+    return preview, True
 
 
 def _heredoc_marker(content: str) -> str:
@@ -133,7 +164,7 @@ def _build_persisted_message(
     msg += f"This tool result was too large ({original_size:,} characters, {size_str}).\n"
     msg += f"Full output saved to: {file_path}\n"
     msg += "Use the read_file tool with offset and limit to access specific sections of this output.\n\n"
-    msg += f"Preview (first {len(preview)} chars):\n"
+    msg += f"Bounded preview ({len(preview)} chars; beginning and end):\n"
     msg += preview
     if has_more:
         msg += "\n..."

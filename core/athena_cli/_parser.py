@@ -76,6 +76,11 @@ Examples:
     athena dashboard              Start web UI dashboard (port 9119)
     athena dashboard --stop       Stop running dashboard processes
     athena dashboard --status     List running dashboard processes
+    athena model-lab status       Show local model candidates and active lab model
+    athena evals status           Show repeatable quality evaluation status
+    athena offline status         Check local Ollama readiness
+    athena recovery status        List restorable Athena backups
+    athena evolve status          Show tested, reversible skill proposals
 
 For more help on a command:
     athena <command> --help

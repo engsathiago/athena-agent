@@ -1,0 +1,1 @@
+{"id":"marketing-brief","prompt":"Crie um pequeno briefing de campanha contendo público, objetivo, mensagem e indicador de resultado, em até 120 palavras.","checks":[{"type":"regex","value":"(?is).{40,}"},{"type":"max_words","value":120}],"tags":["marketing","brief"]}

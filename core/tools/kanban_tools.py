@@ -34,6 +34,11 @@ import os
 from typing import Any, Optional
 
 from agent.redact import redact_sensitive_text
+from agent.task_completion import (
+    artifact_evidence,
+    assess_completion_evidence,
+    normalize_completion_evidence,
+)
 from athena_cli.goals import judge_goal
 from tools.registry import registry, tool_error
 from athena_cli.config import cfg_get, load_config
@@ -163,6 +168,45 @@ def _stamp_worker_session_metadata(
     stamped = dict(metadata or {})
     stamped["worker_session_id"] = session_id
     return stamped
+
+
+def _completion_evidence_mode() -> str:
+    """Return off|record|require; malformed config safely falls back to record."""
+    try:
+        mode = str(
+            cfg_get(load_config(), "kanban", "completion_evidence", default="record")
+            or "record"
+        ).strip().lower()
+    except Exception:
+        return "record"
+    return mode if mode in {"off", "record", "require"} else "record"
+
+
+def _ledger_completion_evidence() -> list[dict[str, Any]]:
+    """Read the worker's latest passive verification record, when available."""
+    try:
+        from agent.verification_evidence import verification_status
+
+        state = verification_status(
+            session_id=os.environ.get("ATHENA_SESSION_ID"),
+            cwd=os.environ.get("ATHENA_KANBAN_WORKSPACE") or os.getcwd(),
+        )
+        event = state.get("evidence")
+        if not isinstance(event, dict):
+            return []
+        return normalize_completion_evidence(
+            {
+                "kind": event.get("kind") or "verification",
+                "command": event.get("command"),
+                "scope": event.get("scope"),
+                "status": state.get("status") or event.get("status"),
+                "exit_code": event.get("exit_code"),
+                "summary": event.get("output_summary"),
+            }
+        )
+    except Exception as exc:
+        logger.debug("kanban completion evidence lookup skipped: %s", exc)
+        return []
 
 
 def _enforce_worker_task_ownership(tid: str) -> Optional[str]:
@@ -631,6 +675,7 @@ def _handle_complete(args: dict, **kw) -> str:
     summary = args.get("summary")
     metadata = args.get("metadata")
     result = args.get("result")
+    evidence = args.get("evidence")
     if summary:
         summary = redact_sensitive_text(str(summary), force=True)
     if result:
@@ -704,6 +749,39 @@ def _handle_complete(args: dict, **kw) -> str:
         return tool_error(
             f"metadata must be an object/dict, got {type(metadata).__name__}"
         )
+
+    evidence_mode = _completion_evidence_mode()
+    if evidence_mode != "off":
+        try:
+            normalized_evidence = normalize_completion_evidence(evidence)
+        except (TypeError, ValueError) as exc:
+            return tool_error(f"invalid completion evidence: {exc}")
+        normalized_evidence.extend(_ledger_completion_evidence())
+        normalized_evidence.extend(artifact_evidence(artifacts))
+
+        # Evidence can contain terminal output and paths. Apply the same
+        # forced redaction used by the rest of the handoff before persistence.
+        redacted_json = redact_sensitive_text(
+            json.dumps(normalized_evidence, ensure_ascii=False, default=str),
+            force=True,
+        )
+        try:
+            normalized_evidence = json.loads(redacted_json)
+        except json.JSONDecodeError:
+            normalized_evidence = []
+        assessment = assess_completion_evidence(normalized_evidence)
+        if evidence_mode == "require" and not assessment["verified"]:
+            return tool_error(
+                "kanban_complete requires concrete completion evidence. "
+                "Provide evidence such as a successful command/test, a verified "
+                "check, or an existing deliverable path. A prose claim alone "
+                "does not count as proof. The task remains in-flight."
+            )
+        if normalized_evidence:
+            metadata = dict(metadata or {})
+            metadata["completion_evidence"] = normalized_evidence
+            metadata["completion_assessment"] = assessment
+
     metadata = _stamp_worker_session_metadata(tid, metadata)
     board = args.get("board")
     try:
@@ -1259,6 +1337,13 @@ def _handle_create(args: dict, **kw) -> str:
         return tool_error(
             f"skills must be a list of skill names, got {type(skills).__name__}"
         )
+    toolsets = args.get("toolsets")
+    if isinstance(toolsets, str):
+        toolsets = [toolsets]
+    if toolsets is not None and not isinstance(toolsets, (list, tuple)):
+        return tool_error(
+            f"toolsets must be a list of names, got {type(toolsets).__name__}"
+        )
     goal_mode, goal_bool_error = _parse_bool_arg(args, "goal_mode")
     if goal_bool_error:
         return tool_error(goal_bool_error)
@@ -1306,6 +1391,7 @@ def _handle_create(args: dict, **kw) -> str:
                     if max_runtime_seconds is not None else None
                 ),
                 skills=skills,
+                toolsets=toolsets,
                 model_override=model_override,
                 provider_override=provider_override,
                 goal_mode=goal_mode,
@@ -1652,6 +1738,30 @@ KANBAN_COMPLETE_SCHEMA = {
                     "attempt — {\"changed_files\": [...], \"tests_run\": 12, "
                     "\"findings\": [...]}. Surfaced to downstream "
                     "workers alongside ``summary``."
+                ),
+            },
+            "evidence": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {"type": "string"},
+                        "summary": {"type": "string"},
+                        "command": {"type": "string"},
+                        "path": {"type": "string"},
+                        "scope": {"type": "string"},
+                        "status": {"type": "string"},
+                        "exit_code": {"type": "integer"},
+                    },
+                },
+                "description": (
+                    "Concrete proof supporting completion, such as tests, "
+                    "checks, commands, or externally verified outcomes. "
+                    "Athena also attaches its latest recorded test/check and "
+                    "declared artifacts automatically. Configure "
+                    "kanban.completion_evidence as off, record (default), or "
+                    "require. Plain prose without a passing status or successful "
+                    "exit code is recorded as a claim, not proof."
                 ),
             },
             "result": {
@@ -2031,6 +2141,17 @@ KANBAN_CREATE_SCHEMA = {
                     "task, ['github-code-review'] for a reviewer task. "
                     "The names must match skills installed on the "
                     "assignee's profile."
+                ),
+            },
+            "toolsets": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Optional runtime capabilities for this task. Use ['auto'] "
+                    "to let Athena choose a stable subset from the title/body "
+                    "before the worker session starts, or name explicit toolsets. "
+                    "Omit to keep the assignee profile defaults. 'auto' cannot "
+                    "be combined with other names."
                 ),
             },
             "goal_mode": {

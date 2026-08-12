@@ -161,3 +161,42 @@ toolsets:
     assert "web" in resolved
     assert "kanban" in resolved  # recovered worker lifecycle surface
     assert resolved != ["kanban"]
+
+
+def test_auto_task_toolsets_are_selected_before_worker_start(monkeypatch, tmp_path):
+    root = tmp_path / ".athena"
+    profile = root / "profiles" / "elias"
+    profile.mkdir(parents=True)
+    profile.joinpath("config.yaml").write_text(
+        "platform_toolsets:\n  cli:\n    - browser\n    - clarify\n    - code_execution\n"
+        "    - file\n    - kanban\n    - memory\n    - skills\n    - terminal\n    - web\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ATHENA_HOME", str(root))
+
+    from athena_cli import kanban_db as kb
+
+    monkeypatch.setattr(kb, "_resolve_athena_argv", lambda: ["athena"])
+    captured = {}
+
+    class FakeProc:
+        pid = 4245
+
+    def fake_popen(cmd, *args, **kwargs):
+        captured["cmd"] = list(cmd)
+        return FakeProc()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    task = _make_task(kb, assignee="elias")
+    task.title = "Corrigir bug na API Python"
+    task.body = "Execute os testes do repositorio"
+    task.toolsets = ["auto"]
+
+    kb._default_spawn(task, str(workspace))
+
+    selected = captured["cmd"][captured["cmd"].index("--toolsets") + 1].split(",")
+    assert {"terminal", "file", "code_execution", "kanban"} <= set(selected)
+    assert "browser" not in selected
+    assert "web" not in selected

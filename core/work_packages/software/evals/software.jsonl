@@ -1,0 +1,1 @@
+{"id":"software-review","prompt":"Em até 100 palavras, liste os passos mínimos para alterar um código com segurança e verificar o resultado.","checks":[{"type":"regex","value":"(?is).{40,}"},{"type":"max_words","value":100}],"tags":["software","quality"]}

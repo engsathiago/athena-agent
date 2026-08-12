@@ -17,6 +17,12 @@ de um serviço do sistema.
 - memória local persistente e provedores externos opcionais;
 - agentes com identidade, espaço de trabalho, sessões e memória separados;
 - tarefas agendadas, heartbeat e funcionamento contínuo em Linux;
+- conclusão de tarefas com provas, seleção automática de ferramentas e
+  laboratório opcional para avaliar modelos locais;
+- rastreamento completo, testes de trajetória, fluxos retomáveis e central de
+  resultados com artefatos versionados;
+- roteamento adaptativo de modelos, experimentos canário, pacotes profissionais
+  e trabalhadores distribuídos entre VPSs;
 - políticas de autorização `unrestricted`, `controlled` e `core`.
 
 ## Instalação rápida no Linux ou macOS
@@ -93,6 +99,12 @@ athena memory status           # estado da memória
 athena agent list              # agentes disponíveis
 athena security status         # política de autorização
 athena gateway status          # serviço de mensagens
+athena model-lab status        # candidatos de modelos locais avaliados
+athena traces status           # rastreamento completo das execuções
+athena results status          # entregas aguardando revisão
+athena flows status            # fluxos duráveis e retomáveis
+athena packages list           # pacotes profissionais disponíveis
+athena workers status          # rede de trabalhadores e filas
 ```
 
 ## Dados persistentes
@@ -107,6 +119,10 @@ Todo o estado do usuário fica separado do código:
 ├── SOUL.md
 ├── HEARTBEAT.md
 ├── memories/
+├── model-lab/
+├── operations/
+├── packages/
+├── results/
 ├── profiles/
 ├── sessions/
 ├── skills/
@@ -118,12 +134,15 @@ Nunca publique `~/.athena/.env`: ele pode conter tokens e chaves de API.
 
 ## Documentação
 
+- [Operação avançada: avaliações, memória, Ollama offline, recuperação e evolução](docs/OPERACAO_AVANCADA_ATHENA.md)
+- [Plataforma de inteligência: traces, fluxos, revisão, roteamento e múltiplas VPSs](docs/PLATAFORMA_INTELIGENCIA_ATHENA.md)
 - [Instalação em VPS](docs/INSTALACAO_VPS.md)
 - [Configuração de modelos](docs/MODELOS.md)
 - [Telegram](docs/TELEGRAM.md)
 - [Memória persistente](docs/MEMORIA.md)
 - [Segurança](docs/SEGURANCA.md)
 - [Arquitetura](docs/ARQUITETURA.md)
+- [Melhorias inspiradas pelo estudo dos projetos EVE](docs/MELHORIAS_EVE_ATHENA_2026.md)
 - [Solução de problemas](docs/SOLUCAO_DE_PROBLEMAS.md)
 - [Como contribuir](CONTRIBUTING.md)
 - [Política de segurança](SECURITY.md)

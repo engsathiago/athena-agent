@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pesquisa Profunda"
+  short_description: "Pesquisa verificável com múltiplas etapas"
+  default_prompt: "Use $deep-research para investigar este tema com fontes verificáveis."

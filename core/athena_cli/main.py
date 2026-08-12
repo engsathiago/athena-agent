@@ -475,6 +475,12 @@ from athena_cli.subcommands.memory import build_memory_parser
 from athena_cli.subcommands.acp import build_acp_parser
 from athena_cli.subcommands.tools import build_tools_parser
 from athena_cli.subcommands.insights import build_insights_parser
+from athena_cli.subcommands.model_lab import build_model_lab_parser
+from athena_cli.subcommands.evals import build_evals_parser
+from athena_cli.subcommands.offline import build_offline_parser
+from athena_cli.subcommands.recovery import build_recovery_parser
+from athena_cli.subcommands.evolve import build_evolve_parser
+from athena_cli.subcommands.intelligence import build_intelligence_parsers
 from athena_cli.subcommands.monitoring import build_monitoring_parser
 from athena_cli.subcommands.skills import build_skills_parser
 from athena_cli.subcommands.pairing import build_pairing_parser
@@ -10580,10 +10586,11 @@ _BUILTIN_SUBCOMMANDS = frozenset(
         "acp", "approvals", "auth", "backup", "bundles", "checkpoints", "claw", "completion",
         "computer-use",
         "config", "console", "cron", "curator", "dashboard", "serve", "debug", "doctor",
-        "dump", "egress", "fallback", "gateway", "hooks", "import", "import-agent", "insights",
+        "dump", "egress", "evals", "evolve", "fallback", "gateway", "hooks", "import", "import-agent", "insights",
         "gui", "desktop", "kanban", "login", "logout", "logs", "lsp", "mcp", "memory", "migrate", "moa",
         "journey", "memory-graph", "learning",
-        "model", "monitoring", "pairing", "pets", "plugins", "portal", "profile",
+        "model", "model-lab", "monitoring", "offline", "pairing", "pets", "plugins", "portal", "profile", "recovery",
+        "traces", "results", "flows", "router", "experiments", "packages", "workers",
         "project", "proxy",
         "prompt-size",
         "send", "sessions", "setup",
@@ -12344,6 +12351,12 @@ def main():
     # insights command  (parser built in athena_cli/subcommands/insights.py)
     # =========================================================================
     build_insights_parser(subparsers, cmd_insights=cmd_insights)
+    build_model_lab_parser(subparsers)
+    build_evals_parser(subparsers)
+    build_offline_parser(subparsers)
+    build_recovery_parser(subparsers)
+    build_evolve_parser(subparsers)
+    build_intelligence_parsers(subparsers)
     build_monitoring_parser(subparsers, cmd_monitoring=cmd_monitoring)
 
     # =========================================================================

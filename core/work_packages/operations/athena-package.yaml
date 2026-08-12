@@ -1,0 +1,4 @@
+name: operations
+version: 1.0.0
+description: Operação de VPS com diagnóstico, execução, verificação e recuperação.
+recommended_skills: [athena-s6-container-supervision, docker-management]

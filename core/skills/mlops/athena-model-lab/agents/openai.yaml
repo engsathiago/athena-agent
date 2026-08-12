@@ -1,0 +1,4 @@
+interface:
+  display_name: "Laboratório de Modelos Athena"
+  short_description: "Prepare, compare e aprove modelos locais"
+  default_prompt: "Use $athena-model-lab para preparar e avaliar um modelo local antes da ativação."

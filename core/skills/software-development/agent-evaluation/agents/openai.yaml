@@ -1,0 +1,4 @@
+interface:
+  display_name: "Avaliação de Agentes"
+  short_description: "Evals reproduzíveis de qualidade, custo e tempo"
+  default_prompt: "Use $agent-evaluation para avaliar este agente com tarefas e métricas reproduzíveis."

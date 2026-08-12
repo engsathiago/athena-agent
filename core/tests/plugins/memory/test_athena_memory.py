@@ -131,6 +131,146 @@ def test_provider_tool_and_prefetch(tmp_path):
     provider.shutdown()
 
 
+def test_reflect_stores_structured_reusable_lesson(tmp_path):
+    provider = AthenaMemoryProvider({"db_path": str(tmp_path / "provider.db")})
+    provider.initialize("reflection-session", athena_home=str(tmp_path), platform="cli")
+
+    reflected = json.loads(
+        provider.handle_tool_call(
+            "athena_memory",
+            {
+                "action": "reflect",
+                "task_id": "task-42",
+                "delivered": "Added the report export.",
+                "quality": "verified",
+                "next_action": "Monitor the first production run.",
+                "learned": "Validate generated files before announcing completion.",
+                "evidence": ["12 tests passed", "report.pdf exists"],
+            },
+        )
+    )
+
+    assert reflected["ok"] is True
+    assert reflected["memory"]["kind"] == "lesson"
+    assert reflected["memory"]["source"] == "task_reflection"
+    assert "Quality: verified" in reflected["memory"]["content"]
+    assert "Evidence: 12 tests passed; report.pdf exists" in reflected["memory"]["content"]
+    assert "Validate generated files" in reflected["memory"]["content"]
+    provider.shutdown()
+
+
+def test_progressive_search_returns_preview_and_get_expands(tmp_path):
+    provider = AthenaMemoryProvider(
+        {"db_path": str(tmp_path / "provider.db"), "min_score": 0}
+    )
+    provider.initialize("session-progressive", athena_home=str(tmp_path), platform="cli")
+    full_content = "Architecture decision: " + ("bounded context " * 80) + "final-marker"
+    stored = json.loads(
+        provider.handle_tool_call(
+            "athena_memory",
+            {"action": "remember", "content": full_content, "kind": "decision"},
+        )
+    )
+
+    compact = json.loads(
+        provider.handle_tool_call(
+            "athena_memory",
+            {"action": "search", "query": "architecture decision", "snippet_chars": 120},
+        )
+    )
+    candidate = compact["memories"][0]
+    assert candidate["id"] == stored["memory"]["id"]
+    assert "content" not in candidate
+    assert len(candidate["snippet"]) <= 120
+    assert "next" in compact
+
+    expanded = json.loads(
+        provider.handle_tool_call(
+            "athena_memory",
+            {"action": "get", "memory_id": candidate["id"]},
+        )
+    )
+    assert expanded["memory"]["content"] == full_content
+    provider.shutdown()
+
+
+def test_prefetch_has_item_and_total_character_budgets(tmp_path):
+    provider = AthenaMemoryProvider(
+        {
+            "db_path": str(tmp_path / "provider.db"),
+            "min_score": 0,
+            "recall_limit": 10,
+            "prefetch_item_max_chars": 120,
+            "prefetch_max_chars": 700,
+        }
+    )
+    provider.initialize("session-budget", athena_home=str(tmp_path), platform="cli")
+    for index in range(8):
+        provider._store.remember(
+            f"Project lighthouse decision {index}: " + ("long context " * 100),
+            kind="decision",
+            trust_origin="owner",
+        )
+
+    context = provider.prefetch("project lighthouse decision")
+    assert context.startswith("## Athena recalled memory")
+    assert len(context) <= 700
+    assert " ... " in context
+    provider.shutdown()
+
+
+def test_timeline_returns_bounded_chronological_context(tmp_path):
+    store = AthenaMemoryStore(str(tmp_path / "memory.db"))
+    first = store.remember("Apollo planning started.", scope="project:apollo")
+    anchor = store.remember("Apollo chose SQLite.", scope="project:apollo")
+    third = store.remember("Apollo implementation passed.", scope="project:apollo")
+    store.remember("Borealis chose Postgres.", scope="project:borealis")
+
+    result = store.timeline(anchor["id"], before=1, after=1)
+    assert [item["id"] for item in result["memories"]] == [
+        first["id"], anchor["id"], third["id"]
+    ]
+    assert result["same_scope"] is True
+    store.close()
+
+
+def test_timeline_tool_uses_compact_progressive_disclosure(tmp_path):
+    provider = AthenaMemoryProvider(
+        {"db_path": str(tmp_path / "provider.db"), "min_score": 0}
+    )
+    provider.initialize("timeline-session", athena_home=str(tmp_path), platform="cli")
+    stored = []
+    for index in range(3):
+        result = json.loads(provider.handle_tool_call(
+            "athena_memory",
+            {
+                "action": "remember",
+                "content": f"Timeline decision {index}: " + ("detail " * 100),
+                "kind": "decision",
+                "scope": "project:timeline",
+            },
+        ))
+        stored.append(result["memory"])
+
+    timeline = json.loads(provider.handle_tool_call(
+        "athena_memory",
+        {
+            "action": "timeline",
+            "memory_id": stored[1]["id"],
+            "before": 1,
+            "after": 1,
+            "snippet_chars": 100,
+        },
+    ))
+    assert [item["id"] for item in timeline["memories"]] == [
+        item["id"] for item in stored
+    ]
+    assert timeline["memories"][1]["anchor"] is True
+    assert all("content" not in item for item in timeline["memories"])
+    assert all(len(item["snippet"]) <= 100 for item in timeline["memories"])
+    provider.shutdown()
+
+
 def test_builtin_memory_write_is_mirrored_as_owner_evidence(tmp_path):
     provider = AthenaMemoryProvider({"db_path": str(tmp_path / "provider.db")})
     provider.initialize("session-2", athena_home=str(tmp_path), platform="cli")

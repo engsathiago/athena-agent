@@ -830,6 +830,70 @@ def _validate_backup_zip(zf: zipfile.ZipFile) -> tuple[bool, str]:
     return True, ""
 
 
+def verify_backup_archive(zip_path: str | Path) -> dict[str, Any]:
+    """Validate a full backup, including every contained SQLite snapshot."""
+
+    path = Path(zip_path).expanduser().resolve()
+    result: dict[str, Any] = {
+        "archive": str(path),
+        "valid": False,
+        "files": 0,
+        "uncompressed_bytes": 0,
+        "sqlite": [],
+        "errors": [],
+    }
+    if not path.is_file():
+        result["errors"].append("archive not found")
+        return result
+    if not zipfile.is_zipfile(path):
+        result["errors"].append("not a ZIP archive")
+        return result
+
+    try:
+        with zipfile.ZipFile(path, "r") as zf:
+            ok, reason = _validate_backup_zip(zf)
+            if not ok:
+                result["errors"].append(reason)
+                return result
+            infos = [info for info in zf.infolist() if not info.is_dir()]
+            result["files"] = len(infos)
+            result["uncompressed_bytes"] = sum(info.file_size for info in infos)
+            for info in infos:
+                # Reject absolute, parent-traversing and link entries before
+                # any extraction. Windows separators are normalized as well.
+                normalized = info.filename.replace("\\", "/")
+                parts = Path(normalized).parts
+                unix_mode = (info.external_attr >> 16) & 0o170000
+                if normalized.startswith("/") or ".." in parts or unix_mode == 0o120000:
+                    result["errors"].append(f"unsafe archive entry: {info.filename}")
+            if result["errors"]:
+                return result
+            corrupt_member = zf.testzip()
+            if corrupt_member:
+                result["errors"].append(f"CRC failure: {corrupt_member}")
+                return result
+            with tempfile.TemporaryDirectory(prefix="athena-backup-verify-") as tmp:
+                for index, info in enumerate(infos):
+                    if Path(info.filename).suffix.lower() not in {".db", ".sqlite", ".sqlite3"}:
+                        continue
+                    target = Path(tmp) / f"database-{index}.db"
+                    with zf.open(info) as source, target.open("wb") as destination:
+                        shutil.copyfileobj(source, destination)
+                    check = verify_sqlite_integrity(target)
+                    check["member"] = info.filename
+                    result["sqlite"].append(check)
+                    if not check.get("valid"):
+                        result["errors"].append(
+                            f"invalid SQLite snapshot {info.filename}: {check.get('message')}"
+                        )
+    except (OSError, zipfile.BadZipFile, RuntimeError) as exc:
+        result["errors"].append(str(exc))
+        return result
+
+    result["valid"] = not result["errors"]
+    return result
+
+
 def _detect_prefix(zf: zipfile.ZipFile) -> str:
     """Detect if the zip has a common directory prefix wrapping all entries.
 

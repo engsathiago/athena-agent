@@ -132,6 +132,50 @@ def test_complete_happy_path(worker_env):
         conn.close()
 
 
+def test_complete_require_mode_rejects_claim_without_proof(monkeypatch, worker_env):
+    from athena_cli import kanban_db as kb
+    from tools import kanban_tools as kt
+
+    monkeypatch.setattr(
+        kt, "load_config", lambda: {"kanban": {"completion_evidence": "require"}}
+    )
+    rejected = json.loads(kt._handle_complete({"summary": "I finished"}))
+    assert "requires concrete completion evidence" in rejected["error"]
+
+    conn = kb.connect()
+    try:
+        assert kb.get_task(conn, worker_env).status == "running"
+    finally:
+        conn.close()
+
+
+def test_complete_records_explicit_passing_evidence(monkeypatch, worker_env):
+    from athena_cli import kanban_db as kb
+    from tools import kanban_tools as kt
+
+    monkeypatch.setattr(
+        kt, "load_config", lambda: {"kanban": {"completion_evidence": "require"}}
+    )
+    completed = json.loads(
+        kt._handle_complete(
+            {
+                "summary": "Implemented and tested",
+                "evidence": [
+                    {"kind": "test", "command": "pytest -q", "exit_code": 0}
+                ],
+            }
+        )
+    )
+    assert completed["ok"] is True
+    conn = kb.connect()
+    try:
+        run = kb.latest_run(conn, worker_env)
+        assert run.metadata["completion_assessment"]["status"] == "verified"
+        assert run.metadata["completion_evidence"][0]["command"] == "pytest -q"
+    finally:
+        conn.close()
+
+
 def test_complete_retry_with_empty_created_cards_succeeds(worker_env):
     """After a phantom rejection, retrying kanban_complete with
     created_cards=[] (the documented escape hatch) must complete the

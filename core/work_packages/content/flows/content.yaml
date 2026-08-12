@@ -1,0 +1,13 @@
+name: producao-conteudo
+steps:
+  - id: pauta
+    type: athena
+    prompt: "Crie pauta, promessa e estrutura para: {{input.tema}}"
+  - id: rascunho
+    type: athena
+    needs: [pauta]
+    prompt: "Produza o conteúdo completo seguindo: {{steps.pauta.output.response}}"
+  - id: qualidade
+    type: athena
+    needs: [rascunho]
+    prompt: "Revise clareza, precisão, tom e chamadas para ação; entregue a versão final: {{steps.rascunho.output.response}}"

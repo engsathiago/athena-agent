@@ -9,6 +9,13 @@ DEFAULT_CONFIG = {
     "providers": {},
     "fallback_providers": [],
     "credential_pool_strategies": {},
+    "smart_model_routing": {
+        "enabled": False,
+        # Candidates are evaluated only when explicitly configured.  Each may
+        # include model, provider, tasks, expected_latency/cost and preference.
+        "candidates": [],
+        "min_observations": 5,
+    },
     "toolsets": ["athena-cli"],
     # SQLite journal mode used by every Athena database opener. WAL is the
     # normal default; set DELETE for weak-fsync/shared filesystems where WAL is
@@ -2256,6 +2263,10 @@ DEFAULT_CONFIG = {
         # behaviour — e.g. for a profile that prefers explicit
         # ``kanban_notify-subscribe`` calls per task.
         "auto_subscribe_on_create": True,
+        # Evidence handling when a worker calls kanban_complete:
+        # off = preserve only the handoff, record = attach available proof,
+        # require = keep the task open unless concrete passing proof exists.
+        "completion_evidence": "record",
         # Run the dispatcher inside the gateway process. On by default —
         # the cost is ~300µs every `dispatch_interval_seconds` when idle,
         # and gateway is the supervisor users already have. Set to false

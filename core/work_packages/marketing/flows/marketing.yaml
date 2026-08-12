@@ -1,0 +1,17 @@
+name: campanha-marketing
+steps:
+  - id: briefing
+    type: athena
+    prompt: "Estruture público, objetivo, oferta e métricas para: {{input.campanha}}"
+  - id: conceitos
+    type: athena
+    needs: [briefing]
+    prompt: "Crie três conceitos de campanha distintos: {{steps.briefing.output.response}}"
+  - id: aprovacao
+    type: wait
+    needs: [conceitos]
+    message: Escolha ou ajuste o conceito antes da produção.
+  - id: produzir
+    type: athena
+    needs: [aprovacao]
+    prompt: "Produza o pacote final da campanha usando a decisão: {{steps.aprovacao.output.value}} e os conceitos: {{steps.conceitos.output.response}}"

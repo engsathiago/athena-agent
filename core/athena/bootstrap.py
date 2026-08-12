@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Iterable
 
 
-ATHENA_VERSION = "0.2.0"
+ATHENA_VERSION = "0.3.0"
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _CORE_ROOT = _PACKAGE_DIR.parent
 _TEMPLATE_DIR = _PACKAGE_DIR / "templates"

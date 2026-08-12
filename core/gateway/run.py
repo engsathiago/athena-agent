@@ -4723,6 +4723,9 @@ class TurnRunner:
                     self._runner._enforce_agent_cache_cap()
             logger.debug("Created new agent for session %s (sig=%s)", ctx.session_key, _sig)
 
+        if turn_route.get("routing_decision") is not None:
+            agent._adaptive_routing_decision = turn_route["routing_decision"]
+
         # Per-message state — callbacks and reasoning config change every
         # turn and must not be baked into the cached agent constructor.
         # Gate on needs_progress_queue (tool_progress OR thinking_progress)
@@ -7014,6 +7017,51 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
             ),
         }
 
+        # Apply evidence-driven routing only to a genuinely new conversation.
+        # Existing sessions keep their original model so prompt caching and
+        # provider tool schemas remain stable across terminal/Telegram turns.
+        try:
+            from gateway.session_context import get_session_env
+
+            session_key = get_session_env("ATHENA_SESSION_KEY", "")
+            session_id = get_session_env("ATHENA_SESSION_ID", "")
+        except Exception:
+            session_key = session_id = ""
+        is_new_session = True
+        cache = getattr(self, "_agent_cache", None)
+        cache_lock = getattr(self, "_agent_cache_lock", None)
+        if session_key and cache is not None and cache_lock is not None:
+            with cache_lock:
+                is_new_session = cache.get(session_key) is None
+        session_db = getattr(self, "_session_db", None)
+        if is_new_session and session_id and session_db is not None:
+            try:
+                row = session_db._db.get_session(session_id)
+                is_new_session = not row or int(row.get("message_count") or 0) == 0
+            except Exception:
+                pass
+        if is_new_session:
+            try:
+                from athena_cli.adaptive_router import recommend
+
+                decision = recommend(
+                    str(user_message), current_model=model,
+                    current_provider=str(runtime["provider"] or ""),
+                )
+                if (
+                    decision.get("model")
+                    and str(decision.get("provider") or runtime["provider"] or "")
+                    == str(runtime["provider"] or "")
+                ):
+                    route["model"] = str(decision["model"])
+                    route["routing_decision"] = decision
+                    route["signature"] = (
+                        route["model"], runtime["provider"], runtime["requested_provider"],
+                        runtime["base_url"], runtime["api_mode"], runtime["command"],
+                        tuple(runtime["args"]),
+                    )
+            except Exception:
+                pass
         service_tier = getattr(self, "_service_tier", None)
         if not service_tier:
             route["request_overrides"] = {}

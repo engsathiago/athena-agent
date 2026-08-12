@@ -58,6 +58,7 @@ import type {
   CuratorStatus,
   PortalStatus,
   DebugShareResponse,
+  OperationsStatus,
 } from "@/lib/api";
 
 function formatBytes(n: number): string {
@@ -202,6 +203,7 @@ export default function SystemPage() {
   const [hooks, setHooks] = useState<HooksResponse | null>(null);
   const [curator, setCurator] = useState<CuratorStatus | null>(null);
   const [portal, setPortal] = useState<PortalStatus | null>(null);
+  const [operations, setOperations] = useState<OperationsStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [activeAction, setActiveAction] = useState<string | null>(null);
@@ -262,11 +264,12 @@ export default function SystemPage() {
       api.getHooks(),
       api.getCurator(),
       api.getPortal(),
+      api.getOperationsStatus(),
       // Cached (non-forced) check so the version row shows update status on
       // load without a separate effect / a forced network round-trip.
       api.checkAthenaUpdate(false),
     ])
-      .then(([s, st, m, p, c, h, cur, prt, upd]) => {
+      .then(([s, st, m, p, c, h, cur, prt, ops, upd]) => {
         if (s.status === "fulfilled") setStatus(s.value);
         if (st.status === "fulfilled") setStats(st.value);
         if (m.status === "fulfilled") setMemory(m.value);
@@ -275,6 +278,7 @@ export default function SystemPage() {
         if (h.status === "fulfilled") setHooks(h.value);
         if (cur.status === "fulfilled") setCurator(cur.value);
         if (prt.status === "fulfilled") setPortal(prt.value);
+        if (ops.status === "fulfilled") setOperations(ops.value);
         if (upd.status === "fulfilled") setUpdateInfo(upd.value);
       })
       .finally(() => setLoading(false));
@@ -951,6 +955,71 @@ export default function SystemPage() {
                 )}
               </div>
             )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ── Athena intelligence / operational quality ────────────── */}
+      <section className="flex flex-col gap-3">
+        <H2 variant="sm" className="flex items-center gap-2 text-muted-foreground">
+          <ShieldCheck className="h-4 w-4" /> Athena intelligence
+        </H2>
+        <Card>
+          <CardContent className="py-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-4 gap-x-6 text-sm">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Quality tests</div>
+                <div className="flex items-center gap-2">
+                  {operations?.evaluations.latest?.score !== undefined
+                    ? `${Math.round(operations.evaluations.latest.score * 100)}%`
+                    : "not run"}
+                  <Badge tone={operations?.evaluations.latest ? "success" : "secondary"}>
+                    {operations?.evaluations.run_count ?? 0} runs
+                  </Badge>
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Organized memory</div>
+                <div>
+                  {operations?.memory.active_memories ?? 0} active
+                  {operations?.memory.safe_archive_candidates
+                    ? ` · ${operations.memory.safe_archive_candidates} to review`
+                    : " · clean"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Local Ollama</div>
+                <div className="flex items-center gap-2">
+                  <Badge tone={operations?.offline.ready ? "success" : operations?.offline.service_reachable ? "warning" : "secondary"}>
+                    {operations?.offline.ready ? "ready" : operations?.offline.service_reachable ? "needs setup" : "offline"}
+                  </Badge>
+                  <span>{operations?.offline.models.length ?? 0} models</span>
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Recovery</div>
+                <div title={operations?.recovery.latest?.path}>
+                  {operations?.recovery.latest
+                    ? backupFileName(operations.recovery.latest.path)
+                    : "no full backup found"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Controlled evolution</div>
+                <div>
+                  {operations?.evolution.total ?? 0} proposals · {operations?.evolution.signals?.total ?? 0} signals
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Verified delivery</div>
+                <div>
+                  {operations?.kanban_evidence.verified_runs ?? 0} / {operations?.kanban_evidence.completed_runs_checked ?? 0} recent runs
+                </div>
+              </div>
+            </div>
+            <p className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
+              This panel observes quality, memory, offline readiness, recovery and reversible skill evolution. Policy editing is intentionally outside this workflow.
+            </p>
           </CardContent>
         </Card>
       </section>

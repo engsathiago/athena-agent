@@ -1246,6 +1246,24 @@ export const api = {
       body: JSON.stringify({ event, command }),
     }),
   getSystemStats: () => fetchJSON<SystemStats>("/api/system/stats"),
+  getOperationsStatus: () =>
+    fetchJSON<OperationsStatus>("/api/operations/status"),
+  getIntelligenceStatus: () =>
+    fetchJSON<IntelligenceStatus>("/api/intelligence/status"),
+  getIntelligenceTraces: (limit = 50) =>
+    fetchJSON<{ runs: TraceRun[] }>(`/api/intelligence/traces?limit=${limit}`),
+  getIntelligenceTrace: (id: string) =>
+    fetchJSON<TraceRunDetail>(`/api/intelligence/traces/${encodeURIComponent(id)}`),
+  getReviewResults: (limit = 100) =>
+    fetchJSON<{ items: ReviewItem[] }>(`/api/intelligence/results?limit=${limit}`),
+  getReviewResult: (id: string) =>
+    fetchJSON<ReviewItem>(`/api/intelligence/results/${encodeURIComponent(id)}`),
+  setReviewResultStatus: (id: string, status: string, note = "") =>
+    fetchJSON<ReviewItem>(`/api/intelligence/results/${encodeURIComponent(id)}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, note }),
+    }),
 
   // ── Admin: Curator ──────────────────────────────────────────────────
   getCurator: () => fetchJSON<CuratorStatus>("/api/curator"),
@@ -1786,6 +1804,114 @@ export interface SystemStats {
   memory?: { total: number; available: number; used: number; percent: number };
   disk?: { total: number; used: number; free: number; percent: number };
   process?: { pid: number; rss: number; create_time: number; num_threads: number };
+}
+
+export interface OperationsStatus {
+  evaluations: {
+    run_count: number;
+    latest: null | { suite?: string; score?: number; passed?: number; total?: number; created_at?: string };
+  };
+  memory: {
+    available: boolean;
+    active_memories: number;
+    archived_memories?: number;
+    safe_archive_candidates: number;
+    stale_candidates?: number;
+    duplicate_candidates?: number;
+  };
+  offline: {
+    ready: boolean;
+    service_reachable?: boolean;
+    configured_for_athena?: boolean;
+    configured_model?: string | null;
+    models: string[];
+  };
+  recovery: {
+    archives: Array<{ path: string; bytes: number; modified_at: number }>;
+    latest: null | { path: string; bytes: number; modified_at: number };
+  };
+  evolution: {
+    scope: string;
+    counts: Record<string, number>;
+    total: number;
+    signals?: { total: number };
+  };
+  model_lab: Record<string, unknown>;
+  kanban_evidence: {
+    completed_runs_checked: number;
+    evidence_recorded?: number;
+    verified_runs: number;
+    coverage: number;
+  };
+  policies_managed_here: false;
+}
+
+export interface TraceRun {
+  id: string;
+  session_id: string;
+  task_id: string;
+  platform: string;
+  model: string;
+  provider: string;
+  status: string;
+  started_at: number;
+  ended_at?: number | null;
+  input_tokens: number;
+  output_tokens: number;
+  model_calls: number;
+  tool_calls: number;
+  retries: number;
+  error_count: number;
+  estimated_cost_usd: number;
+  summary: string;
+}
+
+export interface TraceEvent {
+  id: number;
+  event_type: string;
+  occurred_at: number;
+  duration_ms: number;
+  status: string;
+  payload: Record<string, unknown>;
+}
+
+export interface TraceRunDetail extends TraceRun {
+  duration_seconds: number;
+  events: TraceEvent[];
+}
+
+export interface ReviewItem {
+  id: string;
+  source_type: string;
+  source_id: string;
+  title: string;
+  summary: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
+  metadata: Record<string, unknown>;
+  artifacts?: ReviewArtifact[];
+}
+
+export interface ReviewArtifact {
+  id: string;
+  item_id: string;
+  name: string;
+  media_type: string;
+  size_bytes: number;
+  sha256: string;
+  version: number;
+  created_at: number;
+}
+
+export interface IntelligenceStatus {
+  traces: { total: number; running: number; completed: number; errors: number; model_calls: number; tool_calls: number };
+  results: { total: number; needs_attention: number; artifacts: number; counts: Record<string, number> };
+  flows: { definitions: Array<{ id: string; name: string; version: number }>; counts: Record<string, number> };
+  router: { observations: number; enabled_candidates: Array<Record<string, unknown>> };
+  experiments: { total: number; counts: Record<string, number> };
+  packages: { available: Array<{ name: string; version: string; description?: string }>; installed: Array<{ name: string; version: string }> };
+  workers: { online: number; nodes: Array<{ id: string; name: string; status: string; labels: string[] }>; jobs: Record<string, number> };
 }
 
 export interface CuratorStatus {

@@ -1,0 +1,1 @@
+{"id":"operations-recovery","prompt":"Em até 100 palavras, descreva uma atualização de serviço com verificação e possibilidade de retorno à versão anterior.","checks":[{"type":"regex","value":"(?is).{40,}"},{"type":"max_words","value":100}],"tags":["operations","recovery"]}

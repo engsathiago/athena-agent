@@ -1,0 +1,4 @@
+interface:
+  display_name: "Campanha Criativa"
+  short_description: "Campanhas multimídia coerentes e reutilizáveis"
+  default_prompt: "Use $creative-campaign para criar uma campanha visual coerente a partir deste briefing."

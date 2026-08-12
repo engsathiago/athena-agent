@@ -11,15 +11,21 @@ logger = logging.getLogger(__name__)
 def observe_lifecycle(hook_name: str, **kwargs: Any) -> None:
     """Dispatch a Athena lifecycle event to built-in observability features."""
     from . import relay_shared_metrics
+    from athena_cli import trace_studio
 
     _safe_observe(relay_shared_metrics.observe_lifecycle, hook_name, kwargs)
+    _safe_observe(trace_studio.observe_lifecycle, hook_name, kwargs)
 
 
 def handles_hook(hook_name: str) -> bool:
     """Return whether any built-in observability feature handles a hook."""
     from . import relay_shared_metrics
+    from athena_cli import trace_studio
 
-    return relay_shared_metrics.handles_hook(hook_name)
+    return (
+        trace_studio.handles_hook(hook_name)
+        or relay_shared_metrics.handles_hook(hook_name)
+    )
 
 
 def _safe_observe(callback: Any, hook_name: str, kwargs: dict[str, Any]) -> None:

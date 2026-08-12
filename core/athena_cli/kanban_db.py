@@ -945,6 +945,9 @@ class Task:
     # --skills). Stored as a JSON array of skill names. None = use only
     # the defaults; empty list = explicitly no extra skills.
     skills: Optional[list] = None
+    # Per-task worker tool surface. None uses the assignee profile unchanged;
+    # ["auto"] selects a stable subset before the worker session starts.
+    toolsets: Optional[list] = None
     model_override: Optional[str] = None
     # Provider that ``model_override`` belongs to. When set, the dispatcher
     # passes ``--provider <name>`` alongside ``-m <model>`` so the worker
@@ -1006,6 +1009,14 @@ class Task:
                     skills_value = [str(s) for s in parsed if s]
             except Exception:
                 skills_value = None
+        toolsets_value: Optional[list] = None
+        if "toolsets" in keys and row["toolsets"]:
+            try:
+                parsed = json.loads(row["toolsets"])
+                if isinstance(parsed, list):
+                    toolsets_value = [str(name) for name in parsed if name]
+            except Exception:
+                toolsets_value = None
         return cls(
             id=row["id"],
             title=row["title"],
@@ -1056,6 +1067,7 @@ class Task:
                 row["current_step_key"] if "current_step_key" in keys else None
             ),
             skills=skills_value,
+            toolsets=toolsets_value,
             model_override=row["model_override"] if "model_override" in keys and row["model_override"] else None,
             provider_override=(
                 row["provider_override"]
@@ -1226,6 +1238,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     -- Force-loaded skills for the worker on this task, stored as JSON.
     -- Passed to the worker via `--skills`. NULL or empty array = no extras.
     skills               TEXT,
+    -- Per-task runtime capabilities, stored as JSON. NULL = profile defaults;
+    -- ["auto"] = deterministic selection from title/body before startup.
+    toolsets             TEXT,
     -- Per-task model override. When set, the dispatcher passes -m <model>
     -- to the worker, overriding the profile's default model. NULL = use
     -- the profile default.
@@ -2410,6 +2425,9 @@ def _migrate_add_optional_columns(conn: sqlite3.Connection) -> None:
         # worker via --skills. NULL is fine for existing rows.
         _add_column_if_missing(conn, "tasks", "skills", "skills TEXT")
 
+    if "toolsets" not in cols:
+        _add_column_if_missing(conn, "tasks", "toolsets", "toolsets TEXT")
+
     if "max_retries" not in cols:
         # Per-task override for the consecutive-failure circuit breaker.
         # NULL = fall through to the dispatcher-level ``kanban.failure_limit``
@@ -2895,6 +2913,7 @@ def create_task(
     idempotency_key: Optional[str] = None,
     max_runtime_seconds: Optional[int] = None,
     skills: Optional[Iterable[str]] = None,
+    toolsets: Optional[Iterable[str]] = None,
     max_retries: Optional[int] = None,
     model_override: Optional[str] = None,
     provider_override: Optional[str] = None,
@@ -2929,6 +2948,10 @@ def create_task(
     each name to ``athena --skills ...``. Use this to pin a task to a
     specialist skill (e.g. ``skills=["translation"]`` so the worker loads the
     translation skill regardless of the profile's default config).
+
+    ``toolsets`` optionally pins runtime capabilities for this task. Pass
+    ``["auto"]`` to choose a stable subset from the title/body before the
+    worker starts. Omit it to keep the assignee profile defaults.
 
     ``model_override`` / ``provider_override`` pin the worker to a specific
     model (and optionally its provider) without touching the profile's
@@ -3116,6 +3139,24 @@ def create_task(
             )
         skills_list = cleaned
 
+    toolsets_list: Optional[list[str]] = None
+    if toolsets is not None:
+        raw_toolsets = [toolsets] if isinstance(toolsets, str) else list(toolsets)
+        known = {name.casefold(): name for name in get_toolset_names()}
+        cleaned_toolsets: list[str] = []
+        seen_toolsets: set[str] = set()
+        for raw in raw_toolsets:
+            name = str(raw or "").strip().casefold()
+            if not name or name in seen_toolsets:
+                continue
+            if name != "auto" and name not in known:
+                raise ValueError(f"unknown toolset: {raw!r}")
+            seen_toolsets.add(name)
+            cleaned_toolsets.append("auto" if name == "auto" else known[name])
+        if "auto" in cleaned_toolsets and len(cleaned_toolsets) != 1:
+            raise ValueError("toolset 'auto' cannot be combined with explicit toolsets")
+        toolsets_list = cleaned_toolsets
+
     # Idempotency check — return the existing task instead of creating a
     # duplicate. Done BEFORE entering write_txn to keep the fast path fast
     # and to avoid holding a write lock during the lookup. Race is
@@ -3215,10 +3256,10 @@ def create_task(
                         created_by, created_at, workspace_kind, workspace_path,
                         branch_name, project_id, tenant, idempotency_key,
                         max_runtime_seconds,
-                        skills, max_retries, model_override, provider_override,
+                        skills, toolsets, max_retries, model_override, provider_override,
                         reasoning_effort,
                         goal_mode, goal_max_turns, session_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         task_id,
@@ -3237,6 +3278,7 @@ def create_task(
                         idempotency_key,
                         int(max_runtime_seconds) if max_runtime_seconds is not None else None,
                         json.dumps(skills_list) if skills_list is not None else None,
+                        json.dumps(toolsets_list) if toolsets_list is not None else None,
                         int(max_retries) if max_retries is not None else None,
                         model_override,
                         provider_override,
@@ -3265,6 +3307,7 @@ def create_task(
                         "branch_name": branch_name,
                         "project_id": project_id,
                         "skills": list(skills_list) if skills_list else None,
+                        "toolsets": list(toolsets_list) if toolsets_list else None,
                         "goal_mode": bool(goal_mode) or None,
                         "model_override": model_override,
                         "provider_override": provider_override,
@@ -5040,6 +5083,19 @@ def complete_task(
         run_id=run_id,
         summary=(summary if summary is not None else result),
     )
+    try:
+        from athena_cli.result_hub import create_item as _create_result_item
+
+        _create_result_item(
+            source_type="kanban", source_id=task_id,
+            title=_done_task.title if _done_task else f"Tarefa {task_id}",
+            summary=(summary if summary is not None else result) or "",
+            status="ready",
+            metadata={"task_id": task_id, "run_id": run_id, "board": get_current_board()},
+            artifacts=(metadata or {}).get("artifacts") or [],
+        )
+    except Exception as exc:
+        _log.debug("result hub ingestion failed for %s: %s", task_id, exc)
     return True
 
 
@@ -8757,7 +8813,7 @@ def _rotate_worker_log(
 
 def _module_athena_argv() -> list[str]:
     """Return the interpreter-bound Athena CLI invocation."""
-    return [sys.executable, "-m", "athena"]
+    return [sys.executable, "-m", "athena_cli.main"]
 
 
 def _absolute_athena_path(path: str) -> str:
@@ -9123,6 +9179,20 @@ def _default_spawn(
     if task.reasoning_effort:
         cmd.extend(["--reasoning", task.reasoning_effort])
     worker_toolsets = _resolve_worker_cli_toolsets(env.get("ATHENA_HOME"))
+    if worker_toolsets and task.toolsets:
+        if task.toolsets == ["auto"]:
+            from athena_cli.task_toolsets import select_task_toolsets
+
+            worker_toolsets = select_task_toolsets(
+                task.title,
+                task.body,
+                allowed=worker_toolsets,
+            )
+        else:
+            allowed = set(worker_toolsets)
+            worker_toolsets = [name for name in task.toolsets if name in allowed]
+            if "kanban" not in worker_toolsets:
+                worker_toolsets.append("kanban")
     if worker_toolsets:
         cmd.extend(["--toolsets", ",".join(worker_toolsets)])
     cmd.extend([

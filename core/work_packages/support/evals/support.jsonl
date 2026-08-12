@@ -1,0 +1,1 @@
+{"id":"support-answer","prompt":"Responda em até 100 palavras a um cliente cujo serviço está indisponível, incluindo acolhimento, próximo passo e prazo de retorno.","checks":[{"type":"regex","value":"(?is).{40,}"},{"type":"max_words","value":100}],"tags":["support","quality"]}

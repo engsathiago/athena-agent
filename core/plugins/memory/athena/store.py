@@ -8,6 +8,7 @@ its own authority through prompt injection.
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 import sqlite3
@@ -638,6 +639,227 @@ class AthenaMemoryStore:
             rows = self._conn.execute(sql, params).fetchall()
         return [dict(row) for row in rows]
 
+    def timeline(
+        self,
+        memory_id: int,
+        *,
+        before: int = 3,
+        after: int = 3,
+        same_scope: bool = True,
+        same_session: bool = False,
+    ) -> Dict[str, Any]:
+        """Return chronological context around one memory.
+
+        Search answers *which* records may matter; timeline answers *what was
+        happening around* a selected record.  The anchor is included even when
+        it has been superseded, while neighbouring records are active only.
+        This keeps correction history inspectable without allowing stale
+        records to flood ordinary recall.
+        """
+
+        before = max(0, min(int(before), 25))
+        after = max(0, min(int(after), 25))
+        anchor = self.get(memory_id)
+        clauses = ["status = 'active'"]
+        params: List[Any] = []
+        if same_scope:
+            clauses.append("scope = ?")
+            params.append(str(anchor["scope"]))
+        if same_session:
+            clauses.append("session_id = ?")
+            params.append(str(anchor.get("session_id") or ""))
+        filters = " AND ".join(clauses)
+        anchor_key = (float(anchor["created_at"]), int(anchor["id"]))
+
+        with self._lock:
+            earlier = self._conn.execute(
+                f"""
+                SELECT * FROM memories
+                WHERE {filters}
+                  AND (created_at < ? OR (created_at = ? AND id < ?))
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                [*params, anchor_key[0], anchor_key[0], anchor_key[1], before],
+            ).fetchall()
+            later = self._conn.execute(
+                f"""
+                SELECT * FROM memories
+                WHERE {filters}
+                  AND (created_at > ? OR (created_at = ? AND id > ?))
+                ORDER BY created_at ASC, id ASC
+                LIMIT ?
+                """,
+                [*params, anchor_key[0], anchor_key[0], anchor_key[1], after],
+            ).fetchall()
+
+        items = [dict(row) for row in reversed(earlier)]
+        items.append(anchor)
+        items.extend(dict(row) for row in later)
+        return {
+            "anchor_id": int(memory_id),
+            "same_scope": bool(same_scope),
+            "same_session": bool(same_session),
+            "memories": items,
+        }
+
+    def review(
+        self,
+        *,
+        limit: int = 200,
+        stale_after_days: float = 180.0,
+        low_confidence: float = 0.35,
+        duplicate_threshold: float = 0.92,
+    ) -> Dict[str, Any]:
+        """Inspect memory hygiene without changing data.
+
+        Owner and system memories are reported for visibility but are never
+        selected for automatic archival.  ``safe_archive_ids`` contains only
+        agent/untrusted records that are both stale and weak, or the weaker
+        side of a very close duplicate pair.
+        """
+
+        limit = max(1, min(int(limit), 500))
+        cutoff = time.time() - max(1.0, float(stale_after_days)) * 86400.0
+        threshold = _clamp(low_confidence)
+        duplicate_threshold = max(0.75, min(float(duplicate_threshold), 1.0))
+        with self._lock:
+            rows = [
+                dict(row)
+                for row in self._conn.execute(
+                    """
+                    SELECT * FROM memories WHERE status = 'active'
+                    ORDER BY updated_at ASC, id ASC LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+            ]
+
+        stale = [
+            row for row in rows
+            if float(row["updated_at"]) < cutoff
+            and int(row.get("access_count") or 0) == 0
+            and row.get("last_accessed_at") is None
+        ]
+        weak = [row for row in rows if float(row["confidence"]) < threshold]
+        stale_ids = {int(row["id"]) for row in stale}
+        weak_ids = {int(row["id"]) for row in weak}
+        safe_ids = {
+            int(row["id"])
+            for row in rows
+            if int(row["id"]) in stale_ids & weak_ids
+            and str(row["trust_origin"]) in {"agent", "untrusted"}
+        }
+
+        duplicates: List[Dict[str, Any]] = []
+        # Compare only records in the same scope and kind.  A bounded input
+        # keeps this deterministic even for long-lived profiles.
+        for index, left in enumerate(rows):
+            for right in rows[index + 1:]:
+                if left["scope"] != right["scope"] or left["kind"] != right["kind"]:
+                    continue
+                similarity = _fuzzy_similarity(str(left["content"]), str(right["content"]))
+                if similarity < duplicate_threshold:
+                    continue
+                left_key = (
+                    _TRUST_RANK.get(str(left["trust_origin"]), 0),
+                    float(left["confidence"]),
+                    float(left["importance"]),
+                    float(left["updated_at"]),
+                )
+                right_key = (
+                    _TRUST_RANK.get(str(right["trust_origin"]), 0),
+                    float(right["confidence"]),
+                    float(right["importance"]),
+                    float(right["updated_at"]),
+                )
+                loser, keeper = (left, right) if left_key < right_key else (right, left)
+                duplicates.append({
+                    "keep_id": int(keeper["id"]),
+                    "candidate_id": int(loser["id"]),
+                    "similarity": round(similarity, 4),
+                    "scope": str(left["scope"]),
+                    "kind": str(left["kind"]),
+                })
+                if str(loser["trust_origin"]) in {"agent", "untrusted"}:
+                    safe_ids.add(int(loser["id"]))
+
+        def compact(row: Dict[str, Any]) -> Dict[str, Any]:
+            return {
+                "id": int(row["id"]),
+                "kind": row["kind"],
+                "scope": row["scope"],
+                "confidence": float(row["confidence"]),
+                "trust_origin": row["trust_origin"],
+                "updated_at": float(row["updated_at"]),
+                "access_count": int(row.get("access_count") or 0),
+                "preview": " ".join(str(row["content"]).split())[:240],
+            }
+
+        return {
+            "reviewed": len(rows),
+            "stale_after_days": float(stale_after_days),
+            "low_confidence_threshold": threshold,
+            "stale": [compact(row) for row in stale],
+            "low_confidence": [compact(row) for row in weak],
+            "duplicates": duplicates,
+            "safe_archive_ids": sorted(safe_ids),
+            "protected_origins": ["owner", "system"],
+        }
+
+    def archive(self, memory_ids: Iterable[int], *, reason: str = "maintenance") -> int:
+        """Soft-archive safe memory candidates; owner/system data is protected."""
+
+        ids = sorted({int(memory_id) for memory_id in memory_ids})
+        if not ids:
+            return 0
+        placeholders = ",".join("?" for _ in ids)
+        now = time.time()
+        with self._lock:
+            eligible = [
+                int(row["id"])
+                for row in self._conn.execute(
+                    f"""
+                    SELECT id FROM memories
+                    WHERE id IN ({placeholders}) AND status = 'active'
+                      AND trust_origin IN ('agent', 'untrusted')
+                    """,
+                    ids,
+                ).fetchall()
+            ]
+            if not eligible:
+                return 0
+            eligible_placeholders = ",".join("?" for _ in eligible)
+            cursor = self._conn.execute(
+                f"UPDATE memories SET status = 'archived', updated_at = ? WHERE id IN ({eligible_placeholders})",
+                [now, *eligible],
+            )
+            details = json.dumps({"reason": str(reason)}, ensure_ascii=False)
+            for memory_id in eligible:
+                self._record_event(memory_id, "archived", details)
+            self._conn.commit()
+            return int(cursor.rowcount)
+
+    def maintain(
+        self,
+        *,
+        dry_run: bool = True,
+        limit: int = 200,
+        stale_after_days: float = 180.0,
+        low_confidence: float = 0.35,
+    ) -> Dict[str, Any]:
+        review = self.review(
+            limit=limit,
+            stale_after_days=stale_after_days,
+            low_confidence=low_confidence,
+        )
+        archived = 0
+        if not dry_run:
+            archived = self.archive(
+                review["safe_archive_ids"], reason="memory_hygiene_maintenance"
+            )
+        return {**review, "dry_run": bool(dry_run), "archived": archived}
+
     def status(self) -> Dict[str, Any]:
         with self._lock:
             total = self._conn.execute(
@@ -664,9 +886,13 @@ class AthenaMemoryStore:
             event_count = self._conn.execute(
                 "SELECT COUNT(*) FROM memory_events"
             ).fetchone()[0]
+            archived = self._conn.execute(
+                "SELECT COUNT(*) FROM memories WHERE status = 'archived'"
+            ).fetchone()[0]
         return {
             "database": str(self.db_path),
             "active_memories": int(total),
+            "archived_memories": int(archived),
             "by_kind": by_kind,
             "by_scope": by_scope,
             "audit_events": int(event_count),

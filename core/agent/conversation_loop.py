@@ -1107,6 +1107,8 @@ def _apply_context_engine_selection(
     incoming_message: Optional[Dict[str, Any]],
     *,
     logger: Any,
+    task_id: str = "",
+    turn_id: str = "",
 ) -> List[Dict[str, Any]]:
     """Run the optional per-turn ``ContextEngine.select_context()`` hook.
 
@@ -1172,6 +1174,21 @@ def _apply_context_engine_selection(
     # with an empty message list that the downstream sanitizers cannot restore,
     # reaching the provider as an invalid request instead of failing open.
     if isinstance(selected, list) and selected and all(isinstance(m, dict) for m in selected):
+        try:
+            from athena_cli.lifecycle import invoke_hook as _invoke_hook
+
+            _invoke_hook(
+                "context_selected",
+                session_id=getattr(agent, "session_id", None) or "",
+                task_id=task_id,
+                turn_id=turn_id,
+                engine=type(engine).__name__,
+                input_message_count=len(api_messages),
+                selected_message_count=len(selected),
+                changed=selected != api_messages,
+            )
+        except Exception:
+            pass
         return selected
 
     logger.warning(
@@ -1788,6 +1805,8 @@ def run_conversation(
             messages,
             _sel_incoming,
             logger=request_logger,
+            task_id=effective_task_id,
+            turn_id=turn_id,
         )
 
         # Safety net: strip orphaned tool results / add stubs for missing
@@ -2313,6 +2332,7 @@ def run_conversation(
                             started_at=api_start_time,
                             middleware_trace=list(_llm_middleware_trace),
                             request=_request_payload,
+                            routing_decision=getattr(agent, "_adaptive_routing_decision", None),
                         )
                 except Exception:
                     pass

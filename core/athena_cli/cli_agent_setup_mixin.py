@@ -318,6 +318,34 @@ class CLIAgentSetupMixin:
             ),
         }
 
+        # Evidence-driven routing is session-stable: it may choose a model only
+        # before the first agent is built.  Once a conversation exists, the
+        # route stays fixed so prompt caching and provider tool schemas remain
+        # intact.  Cross-provider candidates are reported by ``athena router``
+        # but are not applied here because credentials/runtime would also need
+        # to be rebuilt.
+        if getattr(self, "agent", None) is None and not getattr(self, "conversation_history", None):
+            try:
+                from athena_cli.adaptive_router import recommend
+
+                decision = recommend(
+                    str(user_message), current_model=self.model,
+                    current_provider=str(runtime["provider"] or ""),
+                )
+                if (
+                    decision.get("model")
+                    and str(decision.get("provider") or runtime["provider"] or "")
+                    == str(runtime["provider"] or "")
+                ):
+                    route["model"] = str(decision["model"])
+                    route["routing_decision"] = decision
+                    route["signature"] = (
+                        route["model"], runtime["provider"], runtime["requested_provider"],
+                        runtime["base_url"], runtime["api_mode"], runtime["command"], tuple(runtime["args"]),
+                    )
+            except Exception:
+                pass
+
         service_tier = getattr(self, "service_tier", None)
         if not service_tier:
             route["request_overrides"] = None

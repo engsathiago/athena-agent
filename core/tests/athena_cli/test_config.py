@@ -41,12 +41,15 @@ class TestGetAthenaHome:
 
 class TestEnsureAthenaHome:
 
-    def test_creates_default_soul_md_if_missing(self, tmp_path):
+    def test_creates_editable_soul_slot_if_missing(self, tmp_path):
         with patch.dict(os.environ, {"ATHENA_HOME": str(tmp_path)}):
             ensure_athena_home()
             soul_path = tmp_path / "SOUL.md"
             assert soul_path.exists()
-            assert soul_path.read_text(encoding="utf-8").strip() != ""
+            # The project deliberately leaves policy/persona authorship to the
+            # operator; initialization creates the editable slot without
+            # injecting rules of its own.
+            assert soul_path.read_text(encoding="utf-8") == ""
 
 
     def test_upgrades_legacy_template_soul_md(self, tmp_path):
@@ -1422,6 +1425,7 @@ def test_default_config_kanban_block_not_dropped_by_duplicate_key():
     kanban = DEFAULT_CONFIG["kanban"]
     # From the first (dropped) block:
     assert kanban.get("auto_subscribe_on_create") is True
+    assert kanban.get("completion_evidence") == "record"
     # From the second block:
     assert "dispatch_in_gateway" in kanban
     assert "auto_decompose" in kanban

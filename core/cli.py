@@ -13686,6 +13686,7 @@ class AthenaCLI(CLIAgentSetupMixin, CLICommandsMixin, CLIBillingMixin):
         agent = self.agent
         if agent is None:
             return None
+        agent._adaptive_routing_decision = turn_route.get("routing_decision")
 
         # Route image attachments based on the active model's vision capability.
         # "native" → pass pixels as OpenAI-style content parts (adapters
@@ -18364,6 +18365,7 @@ def main(
                         runtime_override=turn_route["runtime"],
                         request_overrides=turn_route.get("request_overrides"),
                     ):
+                        cli.agent._adaptive_routing_decision = turn_route.get("routing_decision")
                         cli.agent.quiet_mode = True
                         cli.agent.suppress_status_output = True
                         # Suppress streaming display callbacks so stdout stays

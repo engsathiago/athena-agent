@@ -1,0 +1,13 @@
+name: operacao-vps-verificada
+steps:
+  - id: diagnostico
+    type: athena
+    prompt: "Diagnostique o ambiente e detalhe o estado atual para: {{input.objetivo}}"
+  - id: executar
+    type: athena
+    needs: [diagnostico]
+    prompt: "Execute o objetivo com backup e verificação apropriados: {{steps.diagnostico.output.response}}"
+  - id: validar
+    type: athena
+    needs: [executar]
+    prompt: "Valide serviços, logs e comportamento final. Corrija se necessário: {{steps.executar.output.response}}"

@@ -1,0 +1,1 @@
+import{n as e}from"./rolldown-runtime-CbXtAM7H.js";import{m as t}from"./react-vendor-CYdR760a.js";import{t as n}from"./page-header-context-D54ch5Gp.js";var r=e(t(),1);function i(){let e=(0,r.useContext)(n);if(!e)throw Error(`usePageHeader must be used within a PageHeaderProvider`);return e}export{i as t};

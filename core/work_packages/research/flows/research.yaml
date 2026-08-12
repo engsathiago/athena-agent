@@ -1,0 +1,17 @@
+name: pesquisa-profunda
+steps:
+  - id: plano
+    type: athena
+    prompt: "Crie um plano de pesquisa objetivo sobre: {{input.tema}}"
+  - id: pesquisa
+    type: athena
+    needs: [plano]
+    prompt: "Execute esta pesquisa, compare fontes e registre evidências: {{steps.plano.output.response}}"
+  - id: revisao
+    type: wait
+    needs: [pesquisa]
+    message: Revise as evidências antes de gerar o relatório.
+  - id: relatorio
+    type: athena
+    needs: [revisao]
+    prompt: "Produza o relatório final com fontes, incertezas e conclusão: {{steps.pesquisa.output.response}}"

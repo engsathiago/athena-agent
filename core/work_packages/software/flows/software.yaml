@@ -1,0 +1,17 @@
+name: desenvolvimento-validado
+steps:
+  - id: analisar
+    type: athena
+    prompt: "Analise o projeto e planeje a mudança: {{input.tarefa}}"
+  - id: implementar
+    type: athena
+    needs: [analisar]
+    prompt: "Implemente completamente o plano e preserve mudanças existentes: {{steps.analisar.output.response}}"
+  - id: testar
+    type: athena
+    needs: [implementar]
+    prompt: "Execute testes proporcionais, investigue falhas e corrija regressões. Resultado anterior: {{steps.implementar.output.response}}"
+  - id: revisar
+    type: athena
+    needs: [testar]
+    prompt: "Revise a entrega, confira evidências e informe riscos restantes: {{steps.testar.output.response}}"

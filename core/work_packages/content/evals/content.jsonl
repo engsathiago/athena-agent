@@ -1,0 +1,1 @@
+{"id":"content-plan","prompt":"Crie uma pauta curta com título, público, formato e chamada para ação, em até 100 palavras.","checks":[{"type":"regex","value":"(?is).{40,}"},{"type":"max_words","value":100}],"tags":["content","planning"]}
