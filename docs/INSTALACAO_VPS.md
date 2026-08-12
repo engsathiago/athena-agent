@@ -56,10 +56,9 @@ arquivos da pasta atual. Saia com `/exit`.
 
 ## 5. Configurar Telegram
 
-Antes de expor o gateway, ative a política controlada:
+Configure o gateway e limite o acesso ao seu usuário do Telegram:
 
 ```bash
-athena security mode controlled
 athena gateway setup
 ```
 

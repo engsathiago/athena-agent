@@ -13,7 +13,6 @@ Trate o token como uma senha. Se ele vazar, revogue-o imediatamente no BotFather
 ## Configurar a Athena
 
 ```bash
-athena security mode controlled
 athena gateway setup
 ```
 

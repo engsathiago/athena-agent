@@ -5,8 +5,8 @@ A Athena conversa, executa ferramentas no computador, mantém sessões e memóri
 persistentes, cria agentes isolados e pode permanecer ativa em uma VPS por meio
 de um serviço do sistema.
 
-> **Versão atual:** `0.1.0` — primeira versão pública para testes. Use uma VPS
-> separada e mantenha cópias de segurança dos dados importantes.
+> **Versão atual:** `0.3.0` — plataforma operacional completa para testes em
+> VPS. Mantenha cópias de segurança dos dados importantes.
 
 ## Principais recursos
 
@@ -23,7 +23,8 @@ de um serviço do sistema.
   resultados com artefatos versionados;
 - roteamento adaptativo de modelos, experimentos canário, pacotes profissionais
   e trabalhadores distribuídos entre VPSs;
-- políticas de autorização `unrestricted`, `controlled` e `core`.
+- espaço próprio para o proprietário escrever sua política, sem regras padrão
+  impostas pela Athena.
 
 ## Instalação rápida no Linux ou macOS
 
@@ -63,7 +64,6 @@ exec "$SHELL" -l
 Depois configure somente sua conta do Telegram e instale o serviço:
 
 ```bash
-athena security mode controlled
 athena gateway setup
 athena gateway install
 athena gateway start
@@ -96,7 +96,7 @@ athena model                   # provedor e modelo
 athena status                  # diagnóstico resumido
 athena doctor                  # diagnóstico detalhado
 athena memory status           # estado da memória
-athena agent list              # agentes disponíveis
+athena profile list            # perfis isolados disponíveis
 athena security status         # política de autorização
 athena gateway status          # serviço de mensagens
 athena model-lab status        # candidatos de modelos locais avaliados
