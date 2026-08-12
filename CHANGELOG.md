@@ -13,6 +13,8 @@
   arquivos;
 - publica as novas áreas no painel web e documenta sua instalação, operação,
   armazenamento e configuração;
+- torna as verificações automáticas independentes das dependências antigas do
+  workspace e inclui a primeira camada na suíte executada pelo GitHub;
 - preserva integralmente o espaço de políticas controlado pelo proprietário.
 
 ## 0.3.0 — 2026-08-11
